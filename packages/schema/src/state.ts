@@ -182,6 +182,8 @@ export const RunState = z.object({
   /** Last event seq folded in. The engine numbers its next event `seq + 1`. */
   seq: z.number().int().nonnegative(),
   next_contract_no: z.number().int().positive(),
+  /** Companies that have submitted this round. Cleared when the round resolves. */
+  submitted: z.array(CompanyId),
   companies: z.record(CompanyId, Company),
   groves: z.record(GroveId, Grove),
   contracts: z.record(ContractId, Contract),
