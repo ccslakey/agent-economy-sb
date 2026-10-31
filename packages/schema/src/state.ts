@@ -26,12 +26,18 @@ import {
 
 // Companies
 
-/** Latest order per (kind, good) wins. Keyed by output good because capacity is per output good. */
+/**
+ * Latest order per (kind, good) wins. Keyed by output good because capacity is per output good.
+ * Company changes (a license purchase, a rebrand, auction bids) also wait for the operations step.
+ */
 export const PendingOrders = z.object({
   extract: z.partialRecord(ExtractedGood, z.object({ qty: Qty, from: ExtractSource })),
   produce: z.partialRecord(ProducedGood, Qty),
   sell_npc: z.partialRecord(FinalGood, Qty),
   scrap: z.partialRecord(Good, Qty),
+  buy_license: Role.optional(),
+  rebrand: z.string().optional(),
+  bids: z.partialRecord(Role, Cash),
 });
 export type PendingOrders = z.infer<typeof PendingOrders>;
 

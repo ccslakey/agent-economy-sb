@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Action, ActionError } from './actions.ts';
+import { Action, ActionError, Transfer } from './actions.ts';
 import { BotStrategy, RunConfig } from './config.ts';
 import { ContractTerms, ObligationIndex, Party } from './contracts.ts';
 import { CompanyId, ContractId, EventId, GroveId, RunId } from './ids.ts';
@@ -58,6 +58,7 @@ export const eventShapes = {
   contract_completed: z.object({ contract: ContractId }),
   contract_defaulted: z.object({ contract: ContractId, by: nonEmpty(Party), unmet_value: Cash }),
   contract_cured: z.object({ contract: ContractId, cured_value: Cash }),
+  transfer_made: z.object({ to: CompanyId, what: Transfer }),
   // talk
   message_posted: z.object({ text: z.string() }),
   dm_sent: z.object({ to: CompanyId, text: z.string() }),

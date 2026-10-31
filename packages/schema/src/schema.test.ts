@@ -213,6 +213,7 @@ const eventFixtures: Record<EventType, unknown> = {
     unmet_value: 60,
   }),
   contract_cured: env('contract_cured', { contract: 'k1', cured_value: 60 }),
+  transfer_made: env('transfer_made', { to: 'c02', what: { kind: 'cash', amount: 25 } }, 'c01'),
   message_posted: env('message_posted', { text: 'selling ore' }, 'c01'),
   dm_sent: env('dm_sent', { to: 'c02', text: 'deal?' }, 'c01'),
   extraction_completed: env(

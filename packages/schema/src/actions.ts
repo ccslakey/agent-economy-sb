@@ -8,10 +8,11 @@ import { Cash, ExtractSource, FinalGood, Good, ProducedGood, Qty, Role } from '.
 // truth for action types: the union, the type list, and the API docs all derive from it.
 
 const Text = z.string().min(1).max(500);
-const Transfer = z.discriminatedUnion('kind', [
+export const Transfer = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('goods'), good: Good, qty: Qty.min(1) }),
   z.object({ kind: z.literal('cash'), amount: Cash.min(1) }),
 ]);
+export type Transfer = z.infer<typeof Transfer>;
 
 export const actionShapes = {
   post_message: z.object({ text: Text }),
