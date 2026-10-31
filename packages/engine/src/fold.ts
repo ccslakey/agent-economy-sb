@@ -21,7 +21,13 @@ import {
 // The only way state changes. `step` produces events and folds each one through `apply` as it
 // goes, so live play and replay reach state through this one path.
 
-export const emptyOrders: PendingOrders = { extract: {}, produce: {}, sell_npc: {}, scrap: {} };
+export const emptyOrders: PendingOrders = {
+  extract: {},
+  produce: {},
+  sell_npc: {},
+  scrap: {},
+  bids: {},
+};
 
 /** Build a full record from a key list. The one cast in this package: TypeScript cannot see that a loop over every key fills every key. */
 function fromKeys<K extends string, V>(keys: readonly K[], value: (key: K) => V): Record<K, V> {
@@ -199,6 +205,24 @@ function applyBody(state: RunState, event: Event): RunState {
               scrap: { ...c.pending_orders.scrap, [action.good]: action.qty },
             },
           }));
+        case 'buy_license':
+          return withCompany(marked, actor, (c) => ({
+            ...c,
+            pending_orders: { ...c.pending_orders, buy_license: action.role },
+          }));
+        case 'rebrand':
+          return withCompany(marked, actor, (c) => ({
+            ...c,
+            pending_orders: { ...c.pending_orders, rebrand: action.name },
+          }));
+        case 'bid_license':
+          return withCompany(marked, actor, (c) => ({
+            ...c,
+            pending_orders: {
+              ...c.pending_orders,
+              bids: { ...c.pending_orders.bids, [action.role]: action.amount },
+            },
+          }));
         default:
           return {
             ...marked,
@@ -285,12 +309,24 @@ function applyBody(state: RunState, event: Event): RunState {
       if (grove === undefined) throw new Error(`unknown grove ${shock.grove}`);
       return { ...next, groves: { ...next.groves, [shock.grove]: { ...grove, stock: 0 } } };
     }
-    case 'company_bankrupt':
-      return withCompany(state, actorOf(event), (c) => ({
+    case 'company_bankrupt': {
+      const actor = actorOf(event);
+      const gone = state.companies[actor];
+      if (gone === undefined) throw new Error(`unknown company ${actor}`);
+      const auctions = { ...state.auctions };
+      for (const role of gone.roles) {
+        auctions[role] ??= {
+          reserve: state.config.economy.license_reserve,
+          closes_turn: state.turn + 1,
+          bids: {},
+        };
+      }
+      return withCompany({ ...state, auctions }, actor, (c) => ({
         ...c,
         inventory: {},
         standing: { kind: 'bankrupt', turn: state.turn },
       }));
+    }
 
     case 'contract_proposed': {
       const { contract: id, ...terms } = event.payload;
@@ -406,15 +442,106 @@ function applyBody(state: RunState, event: Event): RunState {
       );
     }
 
-    // Escrow, messages, and licenses (unit 5) fold here once that unit lands.
-    case 'escrow_deposited':
-    case 'escrow_released':
-    case 'escrow_refunded':
+    case 'escrow_deposited': {
+      const { contract: id, obligation: index, units } = event.payload;
+      const depositor = actorOf(event);
+      const obligation = contractOf(state, id).obligations[index];
+      if (obligation === undefined) throw new Error(`${id} has no obligation ${index}`);
+      const next = withContract(state, id, (c) => meet(c, index, units));
+      return withCompany(next, depositor, (c) =>
+        obligation.kind === 'goods'
+          ? { ...c, inventory: addGoods(c.inventory, obligation.good, -units) }
+          : { ...c, cash: c.cash - units },
+      );
+    }
+    case 'escrow_released': {
+      const contract = contractOf(state, event.payload.contract);
+      let next = state;
+      for (const o of contract.obligations) {
+        const receiver = o.by === 'proposer' ? contract.counterparty : contract.proposer;
+        next = withCompany(next, receiver, (c) =>
+          o.kind === 'goods'
+            ? { ...c, inventory: addGoods(c.inventory, o.good, o.met) }
+            : { ...c, cash: c.cash + o.met },
+        );
+      }
+      return next;
+    }
+    case 'escrow_refunded': {
+      const contract = contractOf(state, event.payload.contract);
+      let next = state;
+      for (const o of contract.obligations) {
+        const depositor = o.by === 'proposer' ? contract.proposer : contract.counterparty;
+        next = withCompany(next, depositor, (c) =>
+          o.kind === 'goods'
+            ? { ...c, inventory: addGoods(c.inventory, o.good, o.met) }
+            : { ...c, cash: c.cash + o.met },
+        );
+      }
+      return withContract(next, contract.id, (c) => {
+        const [first, ...rest] = c.obligations;
+        return {
+          ...c,
+          obligations: [{ ...first, met: 0 }, ...rest.map((o) => ({ ...o, met: 0 }))],
+        };
+      });
+    }
     case 'message_posted':
-    case 'dm_sent':
-    case 'license_bought':
-    case 'license_auctioned':
-    case 'company_rebranded':
+    case 'dm_sent': {
+      const from = actorOf(event);
+      const channel =
+        event.type === 'dm_sent'
+          ? ({ kind: 'dm', to: event.payload.to } as const)
+          : ({ kind: 'public' } as const);
+      return {
+        ...state,
+        messages: [
+          ...state.messages,
+          { turn: state.turn, round: event.round ?? 3, from, channel, text: event.payload.text },
+        ],
+      };
+    }
+    case 'transfer_made': {
+      const { to, what } = event.payload;
+      const from = actorOf(event);
+      const move = (c: Company, sign: 1 | -1): Company =>
+        what.kind === 'goods'
+          ? { ...c, inventory: addGoods(c.inventory, what.good, sign * what.qty) }
+          : { ...c, cash: c.cash + sign * what.amount };
+      return withCompany(
+        withCompany(state, from, (c) => move(c, -1)),
+        to,
+        (c) => move(c, 1),
+      );
+    }
+    case 'license_bought': {
+      const { role, price } = event.payload;
+      return withCompany(state, actorOf(event), (c) => ({
+        ...c,
+        roles: [c.roles[0], ...c.roles.slice(1), role],
+        cash: c.cash - price,
+      }));
+    }
+    case 'license_auctioned': {
+      const { role, result } = event.payload;
+      const { [role]: _, ...auctions } = state.auctions;
+      const next = { ...state, auctions };
+      if (result.kind === 'unsold') return next;
+      return withCompany(next, result.winner, (c) => ({
+        ...c,
+        roles: [c.roles[0], ...c.roles.slice(1), role],
+        cash: c.cash - result.bid,
+      }));
+    }
+    case 'company_rebranded': {
+      const { new_name, fee } = event.payload;
+      return withCompany(state, actorOf(event), (c) => ({
+        ...c,
+        name: new_name,
+        cash: c.cash - fee,
+        identity_since_turn: state.turn,
+      }));
+    }
     case 'agent_trace_recorded':
     case 'agent_replaced_by_bot':
     case 'bug_report_filed':

@@ -49,6 +49,22 @@ export function remainingValue(state: RunState, obligation: Obligation): number 
   return (obligation.qty - obligation.met) * state.config.economy.reference_prices[obligation.good];
 }
 
+/** Cash plus goods at reference prices, the base for the escrow fee. */
+export function contractValue(state: RunState, obligations: readonly Obligation[]): number {
+  return obligations.reduce(
+    (sum, o) =>
+      sum + (o.kind === 'cash' ? o.amount : o.qty * state.config.economy.reference_prices[o.good]),
+    0,
+  );
+}
+
+/** Each side's share of the escrow fee, charged on acceptance. Zero for an unescrowed contract. */
+export function escrowFeePerSide(state: RunState, contract: Contract): number {
+  if (!contract.escrow) return 0;
+  const fee = contractValue(state, contract.obligations) * state.config.economy.escrow_fee_fraction;
+  return Math.floor(fee / 2);
+}
+
 export function partyOf(contract: Contract, company: CompanyId): Party | null {
   if (contract.proposer === company) return 'proposer';
   if (contract.counterparty === company) return 'counterparty';
