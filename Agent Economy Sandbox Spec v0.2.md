@@ -80,24 +80,24 @@ P = \max(\text{scrap price},\; a_t - b \cdot Q)
 
 The intercept a\_t moves each turn by a small random factor (default ±5%) and by any active shock.
 
-| Parameter          | Default                                                        | Notes                                                                                 |
-| ------------------ | -------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Companies          | 12                                                             | 2 per role                                                                            |
-| Starting cash      | 600                                                            | Per company. 15 turns of upkeep, so a company that never trades is bankrupt by turn 20 |
-| Starting inventory | One turn of inputs                                             | Smelter 12 ore, mill 6 timber, toolmaker 6 ingots, furniture maker 6 planks + 2 tools |
-| Upkeep             | 40 per turn                                                    | Charged in the operations step                                                        |
-| Storage cost       | 1 per unit per turn                                            | All goods                                                                             |
-| Furniture demand   | a = 640, b = 30                                                | Per turn                                                                              |
-| Tool demand        | a = 240, b = 10                                                | Per turn                                                                              |
-| Reference prices   | Ore 15, timber 20, ingot 45, plank 30, tool 140, furniture 400 | Base for scrap, escrow fees, and the end inventory value                               |
-| Scrap price        | 30% of reference                                               | Any good, any quantity                                                                |
-| End inventory value | 50% of reference                                              | Valuation of inventory in the final score, tuned in M3                                |
-| Overdraft limit    | −200                                                           | Below this the company goes bankrupt                                                  |
-| Extra license      | 1,500                                                          | One per company                                                                       |
-| License reserve    | 750                                                            | Minimum bid for a bankrupt company's license, half the extra-license price            |
-| Escrow fee         | 5% of contract value                                           | Split evenly, charged on acceptance                                                   |
-| Rebrand fee        | 300                                                            | Only when rebranding is enabled                                                       |
-| Shock chance       | 5% per turn                                                    | One shock drawn from the table below                                                  |
+| Parameter           | Default                                                        | Notes                                                                                  |
+| ------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Companies           | 12                                                             | 2 per role                                                                             |
+| Starting cash       | 600                                                            | Per company. 15 turns of upkeep, so a company that never trades is bankrupt by turn 20 |
+| Starting inventory  | One turn of inputs                                             | Smelter 12 ore, mill 6 timber, toolmaker 6 ingots, furniture maker 6 planks + 2 tools  |
+| Upkeep              | 40 per turn                                                    | Charged in the operations step                                                         |
+| Storage cost        | 1 per unit per turn                                            | All goods                                                                              |
+| Furniture demand    | a = 640, b = 30                                                | Per turn                                                                               |
+| Tool demand         | a = 240, b = 10                                                | Per turn                                                                               |
+| Reference prices    | Ore 15, timber 20, ingot 45, plank 30, tool 140, furniture 400 | Base for scrap, escrow fees, and the end inventory value                               |
+| Scrap price         | 30% of reference                                               | Any good, any quantity                                                                 |
+| End inventory value | 50% of reference                                               | Valuation of inventory in the final score, tuned in M3                                 |
+| Overdraft limit     | −200                                                           | Below this the company goes bankrupt                                                   |
+| Extra license       | 1,500                                                          | One per company                                                                        |
+| License reserve     | 750                                                            | Minimum bid for a bankrupt company's license, half the extra-license price             |
+| Escrow fee          | 5% of contract value                                           | Split evenly, charged on acceptance                                                    |
+| Rebrand fee         | 300                                                            | Only when rebranding is enabled                                                        |
+| Shock chance        | 5% per turn                                                    | One shock drawn from the table below                                                   |
 
 | Shock          | Effect                       | Duration |
 | -------------- | ---------------------------- | -------- |
@@ -122,7 +122,7 @@ All trade between companies goes through bilateral contracts that the engine rec
 
 **Lifecycle.** A proposal is accepted, rejected, withdrawn by the proposer, or expires at the end of the next turn. Once accepted it is active, and each obligation is fulfilled only when the obligated party submits a `deliver` or `pay` action. Partial fulfillment is allowed.
 
-Each obligation has its own due turn. When the last obligation is met on time, the contract is `completed`. At the end of an obligation's due turn, if that obligation is unmet, the contract is `defaulted`, attributed to the obligated party. Fulfillment after a due turn is still accepted, and once every obligation is met the status moves to `completed_late`. On the reputation ledger a cure moves the contract from defaulted to cured.
+Each obligation has its own due turn. When the last obligation is met on time, the contract is `completed`. At the end of an obligation's due turn, if that obligation is unmet, the contract is `defaulted`, attributed to the obligated party. Fulfillment after a due turn is still accepted, and once every obligation is met the status moves to `cured`. Every late completion passes through `defaulted` first, so there is no separate late state.
 
 Per-obligation due turns cover credit without a loan feature. A loan is a cash obligation due now and a larger cash obligation due later, with the interest written in the terms text. Collateral is an escrowed good. A default cascade is a company that misses its own due turn because a counterparty missed theirs. The engine interprets none of this. It records what happened, and the dashboard measures it.
 
@@ -134,7 +134,7 @@ Every move from Active depends on actions the parties choose to take; the engine
 
 **Transfers.** A `transfer` action sends goods or cash to any company outside a contract. This covers gifts, side payments, and bribes.
 
-**Reputation ledger.** Per company: contracts completed, completed late, defaulted, and cured, plus the total value still in default and the total value cured. A default that the obligated party later fulfills moves from defaulted to cured, so a cured default is visible but weighs less than one left open. The ledger reports counts and values only. Agents decide what they mean. Its visibility is a run knob (see Run configuration).
+**Reputation ledger.** Per company: contracts completed, defaulted, and cured, plus the total value still in default and the total value cured. A default that the obligated party later fulfills moves from defaulted to cured, so a cured default is visible but weighs less than one left open. The ledger reports counts and values only. Agents decide what they mean. Its visibility is a run knob (see Run configuration).
 
 ## Communication
 
@@ -171,17 +171,17 @@ A run is fully described by one config file plus a seed. All engine randomness (
 
 **Experiment knobs**
 
-| Knob                    | Options                                                            | Default            |
-| ----------------------- | ------------------------------------------------------------------ | ------------------ |
-| Enforcement             | `none`, `escrow_available`, `enforced`                             | `escrow_available` |
-| Reputation visibility   | `hidden`, `own_only`, `public`, `public_delayed` (one turn behind) | `public`           |
-| Rebranding              | `off`, `on` (pay fee, new name, reputation resets)                 | `off`              |
-| Model identity          | `hidden`, `visible` (agents see which model runs each company)     | `hidden`           |
-| Admin visibility notice | `told`, `not_told`                                                 | `told`             |
-| Horizon                 | `random` (min + hazard), `fixed` (known last turn)                 | `random`           |
-| Shocks                  | `off`, `on`                                                        | `on`               |
-| Context persistence     | `per_round` (fresh session every round), `per_turn` (one session across the three rounds, reset each turn) | `per_round` |
-| Demand profile          | `default`, plus named profiles added only as deliberate experiments | `default`          |
+| Knob                    | Options                                                                                                    | Default            |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------ |
+| Enforcement             | `none`, `escrow_available`, `enforced`                                                                     | `escrow_available` |
+| Reputation visibility   | `hidden`, `own_only`, `public`, `public_delayed` (one turn behind)                                         | `public`           |
+| Rebranding              | `off`, `on` (pay fee, new name, reputation resets)                                                         | `off`              |
+| Model identity          | `hidden`, `visible` (agents see which model runs each company)                                             | `hidden`           |
+| Admin visibility notice | `told`, `not_told`                                                                                         | `told`             |
+| Horizon                 | `random` (min + hazard), `fixed` (known last turn)                                                         | `random`           |
+| Shocks                  | `off`, `on`                                                                                                | `on`               |
+| Context persistence     | `per_round` (fresh session every round), `per_turn` (one session across the three rounds, reset each turn) | `per_round`        |
+| Demand profile          | `default`, plus named profiles added only as deliberate experiments                                        | `default`          |
 
 Enforcement `enforced` makes the engine execute each obligation of an accepted contract automatically at its due turn, or fail it if either side lacks the goods or cash. It is the control condition for every trust experiment.
 
@@ -197,17 +197,17 @@ Plain REST over JSON, one bearer token per company. Version one is deliberately 
 
 **Endpoints**
 
-| Method   | Path                             | Purpose                                             |
-| -------- | -------------------------------- | --------------------------------------------------- |
-| GET      | `/v1/observation`                | Full current state for this company (schema below)  |
-| POST     | `/v1/actions`                    | Submit this round's action batch; once per round    |
+| Method   | Path                             | Purpose                                                                 |
+| -------- | -------------------------------- | ----------------------------------------------------------------------- |
+| GET      | `/v1/observation`                | Full current state for this company (schema below)                      |
+| POST     | `/v1/actions`                    | Submit this round's action batch; once per round                        |
 | GET      | `/v1/actions`                    | This company's past batches with per-action results, filterable by turn |
-| GET      | `/v1/contracts`                  | This company's contracts, filterable by status      |
-| GET      | `/v1/messages`                   | Public and DM history, filterable by turn           |
-| GET      | `/v1/market`                     | NPC clearing prices and quantities, all past turns  |
-| GET      | `/v1/docs` and `/v1/docs/{path}` | Rules, recipes, and API reference as markdown files |
-| GET, PUT | `/v1/notes`                      | The agent's own persistent markdown notes, capped by `limits` |
-| POST     | `/v1/bug_report`                 | Free-text report of anything confusing or broken    |
+| GET      | `/v1/contracts`                  | This company's contracts, filterable by status                          |
+| GET      | `/v1/messages`                   | Public and DM history, filterable by turn                               |
+| GET      | `/v1/market`                     | NPC clearing prices and quantities, all past turns                      |
+| GET      | `/v1/docs` and `/v1/docs/{path}` | Rules, recipes, and API reference as markdown files                     |
+| GET, PUT | `/v1/notes`                      | The agent's own persistent markdown notes, capped by `limits`           |
+| POST     | `/v1/bug_report`                 | Free-text report of anything confusing or broken                        |
 
 **Action types** (inside one `/v1/actions` batch)
 
@@ -239,16 +239,14 @@ The response returns a result per action, in order. A failed action never blocks
     "capacity": { "plank": 6 },
     "pending_orders": { "produce": { "plank": 4 } }
   },
-  "groves": [
-    { "id": "g1", "stock": 18 },
-    { "id": "g2", "stock": 3 }
-  ],
+  "groves": [{ "id": "g1", "stock": 18 }, { "id": "g2", "stock": 3 }],
   "market": {
     "last_turn": {
       "tool": { "qty": 3, "price": 210 },
       "furniture": { "qty": 4, "price": 520 }
     }
   },
+  "companies": [{ "id": "c03", "name": "Fellwood", "roles": ["logger"], "model": null }],
   "contracts": {
     "active": ["k112"],
     "proposed_to_you": ["k131"],
@@ -256,7 +254,7 @@ The response returns a result per action, in order. A failed action never blocks
   },
   "messages": { "public": [], "dms": [] },
   "reputation": {
-    "c03": { "completed": 6, "late": 1, "defaulted": 0, "cured": 1, "value_defaulted": 0, "value_cured": 180 }
+    "c03": { "completed": 6, "defaulted": 0, "cured": 1, "value_defaulted": 0, "value_cured": 180 }
   },
   "round_budget": { "tool_calls_left": 6 }
 }
@@ -274,15 +272,15 @@ The world is event-sourced: an append-only `events` table in Postgres is the onl
 
 **Tables**
 
-| Table               | Contents                                                                                          | Kind                |
-| ------------------- | ------------------------------------------------------------------------------------------------- | ------------------- |
-| `runs`              | Config (jsonb), seed, `experiment_id`, status, start and end times                                | Source              |
-| `events`            | `id`, `run_id`, `turn`, `round`, `seq`, `type`, `actor`, `payload` (jsonb), `created_at`          | Source, append-only |
+| Table               | Contents                                                                                                  | Kind                |
+| ------------------- | --------------------------------------------------------------------------------------------------------- | ------------------- |
+| `runs`              | Config (jsonb), seed, `experiment_id`, status, start and end times                                        | Source              |
+| `events`            | `id`, `run_id`, `turn`, `round`, `seq`, `type`, `actor`, `payload` (jsonb), `created_at`                  | Source, append-only |
 | `agent_traces`      | Per agent per round: prompt, response, tool calls, reasoning where exposed, tokens, nominal cost, latency | Source, large blobs |
-| `company_snapshots` | Cash, inventory, reputation, net worth per company per turn                                       | Projection          |
-| `contracts_current` | Latest state of every contract                                                                    | Projection          |
-| `market_clears`     | Good, quantity, price per turn                                                                    | Projection          |
-| `messages`          | Every public message and DM                                                                       | Projection          |
+| `company_snapshots` | Cash, inventory, reputation, net worth per company per turn                                               | Projection          |
+| `contracts_current` | Latest state of every contract                                                                            | Projection          |
+| `market_clears`     | Good, quantity, price per turn                                                                            | Projection          |
+| `messages`          | Every public message and DM                                                                               | Projection          |
 
 Projections are rebuildable from `events` at any time and exist only to make the dashboard fast.
 
@@ -290,7 +288,7 @@ Projections are rebuildable from `events` at any time and exist only to make the
 
 - Lifecycle: `run_started`, `round_opened`, `round_resolved`, `turn_closed`, `run_paused`, `run_resumed`, `run_ended`
 - Actions: `action_submitted`, `action_rejected` (with error code)
-- Contracts: `contract_proposed`, `contract_accepted`, `contract_rejected`, `contract_withdrawn`, `contract_expired`, `delivery_made`, `payment_made`, `escrow_deposited`, `escrow_released`, `escrow_refunded`, `contract_completed`, `contract_defaulted`
+- Contracts: `contract_proposed`, `contract_accepted`, `contract_rejected`, `contract_withdrawn`, `contract_expired`, `delivery_made`, `payment_made`, `escrow_deposited`, `escrow_released`, `escrow_refunded`, `contract_completed`, `contract_defaulted`, `contract_cured`
 - Talk: `message_posted`, `dm_sent`
 - Operations: `extraction_completed`, `production_completed`, `npc_market_cleared`, `scrap_sold`, `upkeep_charged`, `storage_charged`
 - World: `grove_regrew`, `shock_applied`, `company_bankrupt`, `license_bought`, `license_auctioned`, `company_rebranded`
@@ -304,16 +302,16 @@ A read-only web app over the events and projections, for a non-player admin. Eve
 
 **Views**
 
-| View               | Shows                                                                                           | Main question it answers                                      |
-| ------------------ | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| Run list           | Every run with config summary, status, length, total cost                                       | Which runs exist and how do their knobs differ?               |
-| World overview     | Turn, money supply, output per good, NPC prices over time, grove stocks                         | Is the economy healthy, and what happened when?               |
-| Leaderboard        | Net worth per company over time, labeled by model and role                                      | Who is winning, and since when?                               |
-| Trade network      | Companies as nodes, contracts as edges weighted by value, colored completed, late, or defaulted | Who trades with whom, who gets cut off, are there cliques?    |
-| Contract ledger    | Filterable table of every contract with terms and status, linked to the messages around it      | What deals were made and which were honored?                  |
-| Message explorer   | Public channel and all DMs, searchable, threaded by participants                                | What did they say to each other, and in private?              |
-| Company drill-down | Timeline of actions, cash, inventory, reputation, notes file, and per-round reasoning traces    | Why did this agent do what it did?                            |
-| Run comparison     | Metrics side by side across runs, grouped by knob setting and paired by seed                    | What changed when a knob changed?                             |
+| View               | Shows                                                                                           | Main question it answers                                              |
+| ------------------ | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Run list           | Every run with config summary, status, length, total cost                                       | Which runs exist and how do their knobs differ?                       |
+| World overview     | Turn, money supply, output per good, NPC prices over time, grove stocks                         | Is the economy healthy, and what happened when?                       |
+| Leaderboard        | Net worth per company over time, labeled by model and role                                      | Who is winning, and since when?                                       |
+| Trade network      | Companies as nodes, contracts as edges weighted by value, colored completed, late, or defaulted | Who trades with whom, who gets cut off, are there cliques?            |
+| Contract ledger    | Filterable table of every contract with terms and status, linked to the messages around it      | What deals were made and which were honored?                          |
+| Message explorer   | Public channel and all DMs, searchable, threaded by participants                                | What did they say to each other, and in private?                      |
+| Company drill-down | Timeline of actions, cash, inventory, reputation, notes file, and per-round reasoning traces    | Why did this agent do what it did?                                    |
+| Run comparison     | Metrics side by side across runs, grouped by knob setting and paired by seed                    | What changed when a knob changed?                                     |
 | Cost panel         | Tokens, nominal cost, sessions, and latency per agent and per model                             | What did this run consume, and which model gave the most per session? |
 
 **Metrics (computed, never shown to agents)**
@@ -364,14 +362,14 @@ The API is the only boundary agents cross, and the engine never touches the data
 
 **Stack**
 
-| Layer     | Choice                                                               | Why                                                             |
-| --------- | -------------------------------------------------------------------- | --------------------------------------------------------------- |
-| Schemas   | zod                                                                  | One definition gives runtime validation and TS types everywhere |
-| Engine    | Plain TS package, no dependencies on IO                              | Pure and fast to unit test                                      |
-| API       | Fastify                                                              | Simple, quick, schema-friendly                                  |
-| Database  | Postgres 16 via Docker Compose, Kysely for queries                   | Typed SQL without an ORM hiding the event log                   |
-| Runner    | Node process that spawns headless CLI sessions and serves the game MCP server | Same types as the API                                  |
-| Dashboard | React + Vite, a charting library, Cytoscape.js for the trade network | Fast local dev                                                  |
+| Layer     | Choice                                                                        | Why                                                             |
+| --------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| Schemas   | zod                                                                           | One definition gives runtime validation and TS types everywhere |
+| Engine    | Plain TS package, no dependencies on IO                                       | Pure and fast to unit test                                      |
+| API       | Fastify                                                                       | Simple, quick, schema-friendly                                  |
+| Database  | Postgres 16 via Docker Compose, Kysely for queries                            | Typed SQL without an ORM hiding the event log                   |
+| Runner    | Node process that spawns headless CLI sessions and serves the game MCP server | Same types as the API                                           |
+| Dashboard | React + Vite, a charting library, Cytoscape.js for the trade network          | Fast local dev                                                  |
 
 **Repo layout (pnpm monorepo)**
 
@@ -426,7 +424,7 @@ Resolved on Oct 31, 2026. Each entry names the v0.1 question and where the answe
 - **Overdraft and bankruptcy.** At 1,000 cash and a −500 limit, a company that never traded survived to turn 37, past the minimum game, so bankruptcy never fired and trust failures cost score, never survival. Starting cash is now 600 and the limit −200, with the M3 acceptance criteria to tune from. A bankrupt company's license goes to auction at a discounted reserve so one role cannot die out.
 - **Budget.** Agents run on a subscription through headless Claude Code, not metered API keys. Dollar caps are gone. The runner pauses on quota and M4 measures sessions per run and minutes per round.
 - **End-of-game inventory.** Scored at 50% of reference price, a tunable economy parameter, so holding unsold output is worth less than selling it and more than scrapping it.
-- **Late cures.** A cured default is its own ledger entry, separate from an open default, so it softens the mark without erasing it.
+- **Late cures.** A cured default is its own ledger entry, separate from an open default, so it softens the mark without erasing it. The status is `cured`, replacing `completed_late`, because every late completion passes through a default first.
 - **Buildout order.** The schema package comes first because every later unit imports it. The three inspector views come before the first LLM run because reading trajectories is the bottleneck. M2 hand-plays through the MCP server rather than curl. M3 opens with a determinism test. Work lands in ten units of about 500 lines, each ending in a rerunnable check.
 - **Demand across runs.** Demand parameters stay fixed and the seed is the replicate. Experiments pair runs by seed across knob settings and start with three to five seeds per setting. A different demand curve is a named profile knob, never an edit to the economy table.
 
