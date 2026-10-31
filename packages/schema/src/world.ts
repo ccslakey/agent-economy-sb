@@ -87,6 +87,11 @@ export function producerOf(good: Good): Role {
   return role;
 }
 
+/** Inputs per unit of `good`. Empty for extracted goods. */
+export function recipeOf(good: Good): Readonly<Partial<Record<Good, number>>> {
+  return ROLES[producerOf(good)].inputs;
+}
+
 // Domain primitives shared by config, state, actions, and events.
 
 /** 0 is the pre-game turn `run_started` lands on; play starts at 1. */
