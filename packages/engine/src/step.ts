@@ -15,14 +15,17 @@ import {
   type GroveId,
   PRODUCED_GOODS,
   producerOf,
-  ROLES,
   type RunConfig,
   type RunId,
   type RunState,
   recipeOf,
+  SHOCK_KINDS,
+  SHOCK_RULES,
+  type Shock,
 } from '@agent-economy/schema';
 import { apply } from './fold.ts';
 import type { Rng } from './rng.ts';
+import { capacityOf, demandFactor, scoreOf } from './world.ts';
 
 // state + input + rng -> events. Pure, no IO. The caller appends the events and folds them.
 
@@ -80,9 +83,10 @@ export function step(state: RunState, input: StepInput, rng: Rng): Event[] {
     case 'operations':
       if (s.phase.kind !== 'operations')
         throw new Error(`cannot run operations in phase ${s.phase.kind}`);
-      operations(current, emit, rng);
-      emit({ type: 'turn_closed', payload: {}, actor: null });
-      emit({ type: 'round_opened', payload: {}, actor: null });
+      if (!operations(current, emit, rng)) {
+        emit({ type: 'turn_closed', payload: {}, actor: null });
+        emit({ type: 'round_opened', payload: {}, actor: null });
+      }
       break;
     default: {
       const _exhaustive: never = input;
@@ -105,6 +109,9 @@ function submit(
   const c = s.companies[company];
   const batchError = (): ActionError | null => {
     if (c === undefined) return { code: 'INVALID_ACTION', reason: `unknown company ${company}` };
+    if (c.standing.kind === 'bankrupt') {
+      return { code: 'INVALID_ACTION', reason: 'company is bankrupt' };
+    }
     if (s.phase.kind !== 'round') return { code: 'ROUND_CLOSED', reason: 'no round is open' };
     if (s.submitted.includes(company)) {
       return { code: 'BATCH_ALREADY_SUBMITTED', reason: 'one batch per round' };
@@ -120,19 +127,17 @@ function submit(
   });
 }
 
-function capacityFor(
+function orderError(
+  state: RunState,
   company: Company,
   good: Good,
-): { role: ReturnType<typeof producerOf>; capacity: number } {
+  qty: number,
+): ActionError | null {
   const role = producerOf(good);
-  return { role, capacity: company.roles.includes(role) ? ROLES[role].capacity : 0 };
-}
-
-function orderError(company: Company, good: Good, qty: number): ActionError | null {
-  const { role, capacity } = capacityFor(company, good);
   if (!company.roles.includes(role)) {
     return { code: 'NOT_LICENSED', reason: `${good} needs the ${role} license` };
   }
+  const capacity = capacityOf(state, company, good);
   if (qty > capacity) {
     return { code: 'CAPACITY_EXCEEDED', reason: `${good} capacity is ${capacity} per turn` };
   }
@@ -145,10 +150,15 @@ function validate(state: RunState, company: Company, action: Action): ActionErro
       if (action.from.kind === 'grove' && state.groves[action.from.grove] === undefined) {
         return { code: 'INVALID_ACTION', reason: `no grove ${action.from.grove}` };
       }
-      return orderError(company, action.from.kind === 'ore_pit' ? 'ore' : 'timber', action.qty);
+      return orderError(
+        state,
+        company,
+        action.from.kind === 'ore_pit' ? 'ore' : 'timber',
+        action.qty,
+      );
     }
     case 'produce':
-      return orderError(company, action.good, action.qty);
+      return orderError(state, company, action.good, action.qty);
     case 'sell_npc':
     case 'scrap':
       return null;
@@ -183,12 +193,97 @@ function solvent(state: RunState): Company[] {
     .sort(byId);
 }
 
-function operations(current: () => RunState, emit: (body: Body) => void, rng: Rng): void {
+/** Returns true when the run ended this turn, in which case no new turn opens. */
+function operations(current: () => RunState, emit: (body: Body) => void, rng: Rng): boolean {
   extraction(current, emit);
   production(current, emit);
   market(current, emit, rng);
   scrap(current, emit);
   upkeep(current, emit);
+  regrow(current, emit);
+  shocks(current, emit, rng);
+  bankruptcy(current, emit);
+  return endRoll(current, emit, rng);
+}
+
+function regrow(current: () => RunState, emit: (body: Body) => void): void {
+  const s = current();
+  const { stock_cap, regrowth } = s.config.economy.groves;
+  for (const grove of Object.values(s.groves).sort(byId)) {
+    if (grove.stock >= stock_cap) continue;
+    emit({
+      type: 'grove_regrew',
+      payload: { grove: grove.id, stock: Math.min(stock_cap, grove.stock + regrowth) },
+      actor: null,
+    });
+  }
+}
+
+function pick<T>(rng: Rng, purpose: string, items: readonly T[]): T {
+  const item = items[Math.floor(rng(purpose) * items.length)];
+  if (item === undefined) throw new Error(`nothing to pick for ${purpose}`);
+  return item;
+}
+
+function shocks(current: () => RunState, emit: (body: Body) => void, rng: Rng): void {
+  const s = current();
+  if (s.config.knobs.shocks === 'off') return;
+  if (rng('shock_roll') >= s.config.economy.shock_chance) return;
+  const kind = pick(rng, 'shock_kind', SHOCK_KINDS);
+  emit({
+    type: 'shock_applied',
+    payload: {
+      shock: drawShock(s, kind, rng),
+      until_turn: s.turn + SHOCK_RULES[kind].duration_turns,
+    },
+    actor: null,
+  });
+}
+
+function drawShock(state: RunState, kind: Shock['kind'], rng: Rng): Shock {
+  switch (kind) {
+    case 'grove_fire':
+      return { kind, grove: pick(rng, 'shock_target', Object.values(state.groves).sort(byId)).id };
+    case 'demand_surge':
+    case 'demand_slump':
+      return { kind, good: pick(rng, 'shock_target', FINAL_GOODS) };
+    case 'miners_strike':
+      return { kind };
+    default: {
+      const _exhaustive: never = kind;
+      return _exhaustive;
+    }
+  }
+}
+
+function bankruptcy(current: () => RunState, emit: (body: Body) => void): void {
+  const s = current();
+  for (const c of solvent(s)) {
+    if (c.cash >= s.config.economy.overdraft_limit) continue;
+    emit({
+      type: 'company_bankrupt',
+      payload: { cash: c.cash, contracts_defaulted: [], inventory_scrapped: c.inventory },
+      actor: c.id,
+    });
+  }
+}
+
+function endRoll(current: () => RunState, emit: (body: Body) => void, rng: Rng): boolean {
+  const s = current();
+  const { horizon } = s.config.knobs;
+  const ends =
+    horizon.kind === 'fixed'
+      ? s.turn >= horizon.last_turn
+      : s.turn >= horizon.min_turns && rng('end_roll') < horizon.hazard;
+  if (!ends) return false;
+  const scores: Record<CompanyId, number> = {};
+  for (const c of Object.values(s.companies)) scores[c.id] = scoreOf(s, c);
+  emit({
+    type: 'run_ended',
+    payload: { reason: horizon.kind === 'fixed' ? 'fixed_last_turn' : 'horizon_roll', scores },
+    actor: null,
+  });
+  return true;
 }
 
 function extraction(current: () => RunState, emit: (body: Body) => void): void {
@@ -292,7 +387,7 @@ function market(current: () => RunState, emit: (body: Body) => void, rng: Rng): 
       }
     }
     const noise = (rng(`demand_noise:${good}`) * 2 - 1) * demand_noise;
-    const intercept = curves[good].a * (1 + noise);
+    const intercept = curves[good].a * (1 + noise) * demandFactor(s, good);
     const floor = Math.floor(reference_prices[good] * scrap_fraction);
     const price = Math.max(floor, Math.floor(intercept - curves[good].b * quantity));
     emit({

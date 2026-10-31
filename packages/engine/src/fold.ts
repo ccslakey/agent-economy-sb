@@ -110,7 +110,14 @@ function applyBody(state: RunState, event: Event): RunState {
       for (const c of Object.values(state.companies)) {
         companies[c.id] = { ...c, pending_orders: emptyOrders };
       }
-      return { ...state, companies, turn: state.turn + 1, phase: { kind: 'round', round: 1 } };
+      const turn = state.turn + 1;
+      return {
+        ...state,
+        companies,
+        turn,
+        phase: { kind: 'round', round: 1 },
+        shocks: state.shocks.filter((active) => active.until_turn >= turn),
+      };
     }
     case 'run_paused':
       return state.phase.kind === 'round'
@@ -237,7 +244,22 @@ function applyBody(state: RunState, event: Event): RunState {
       return { ...state, groves: { ...state.groves, [grove]: { ...current, stock } } };
     }
 
-    // Trade layer (unit 4 and 5) and world events (unit 3) fold here once those units land.
+    case 'shock_applied': {
+      const { shock, until_turn } = event.payload;
+      const next = { ...state, shocks: [...state.shocks, { shock, until_turn }] };
+      if (shock.kind !== 'grove_fire') return next;
+      const grove = next.groves[shock.grove];
+      if (grove === undefined) throw new Error(`unknown grove ${shock.grove}`);
+      return { ...next, groves: { ...next.groves, [shock.grove]: { ...grove, stock: 0 } } };
+    }
+    case 'company_bankrupt':
+      return withCompany(state, actorOf(event), (c) => ({
+        ...c,
+        inventory: {},
+        standing: { kind: 'bankrupt', turn: state.turn },
+      }));
+
+    // Trade layer (units 4 and 5) folds here once those units land.
     case 'contract_proposed':
     case 'contract_accepted':
     case 'contract_rejected':
@@ -253,8 +275,6 @@ function applyBody(state: RunState, event: Event): RunState {
     case 'contract_cured':
     case 'message_posted':
     case 'dm_sent':
-    case 'shock_applied':
-    case 'company_bankrupt':
     case 'license_bought':
     case 'license_auctioned':
     case 'company_rebranded':
