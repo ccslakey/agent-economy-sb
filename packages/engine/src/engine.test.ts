@@ -1,6 +1,7 @@
 import {
   Action,
   CompanyId,
+  ContractId,
   Event,
   type EventType,
   GroveId,
@@ -15,6 +16,7 @@ import {
   fold,
   initialState,
   proRata,
+  reputationOf,
   rngFor,
   type StepInput,
   start,
@@ -58,10 +60,9 @@ function game(
       company: CompanyId.parse(company),
       actions: actions.map((a) => Action.parse(a)),
     });
+  /** Resolve whatever rounds remain, then run the operations step and return its events. */
   const closeTurn = () => {
-    run({ kind: 'resolve_round' });
-    run({ kind: 'resolve_round' });
-    run({ kind: 'resolve_round' });
+    while (state.phase.kind === 'round') run({ kind: 'resolve_round' });
     return run({ kind: 'operations' });
   };
   /** Append an event the engine did not produce, to set up a scenario. */
@@ -450,5 +451,274 @@ describe('determinism', () => {
     const replayed = fold(a.started, a.log);
     expect(replayed).toEqual(a.state());
     expect(RunState.parse(JSON.parse(JSON.stringify(replayed)))).toEqual(replayed);
+  });
+});
+
+describe('contracts', () => {
+  const oreForCash = {
+    type: 'propose_contract',
+    counterparty: 'c05',
+    escrow: false,
+    terms_text: '4 ore now, 60 cash next turn',
+    obligations: [
+      { kind: 'goods', by: 'proposer', good: 'ore', qty: 4, due_turn: 1 },
+      { kind: 'cash', by: 'counterparty', amount: 60, due_turn: 2 },
+    ],
+  };
+  const minerWithOre = {
+    miner: { ore: 12 },
+    logger: {},
+    smelter: { ore: 12 },
+    mill: {},
+    toolmaker: {},
+    furniture_maker: {},
+  };
+  const contract = (g: ReturnType<typeof game>, id: string) => {
+    const k = g.state().contracts[ContractId.parse(id)];
+    if (k === undefined) throw new Error(`no contract ${id}`);
+    return k;
+  };
+  const resolve = (g: ReturnType<typeof game>) => g.run({ kind: 'resolve_round' });
+
+  it('mints the contract when the round resolves and walks it to completed', () => {
+    const g = game({ starting_inventory: minerWithOre });
+    expect(types(g.submit('c01', [oreForCash]))).toEqual(['action_submitted']);
+    expect(g.state().contracts).toEqual({});
+    expect(types(resolve(g))).toEqual(['contract_proposed', 'round_resolved', 'round_opened']);
+    expect(contract(g, 'k1')).toMatchObject({
+      proposer: 'c01',
+      counterparty: 'c05',
+      status: { status: 'proposed', turn: 1 },
+      obligations: [
+        { kind: 'goods', met: 0 },
+        { kind: 'cash', met: 0 },
+      ],
+    });
+
+    g.submit('c05', [{ type: 'accept_contract', contract: 'k1' }]);
+    resolve(g);
+    expect(contract(g, 'k1').status).toEqual({ status: 'active', accepted_turn: 1 });
+
+    g.submit('c01', [{ type: 'deliver', contract: 'k1', obligation: 0, qty: 4 }]);
+    expect(types(resolve(g))).toEqual(['delivery_made', 'round_resolved']);
+    expect(company(g, 'c01').inventory).toEqual({ ore: 8 });
+    expect(company(g, 'c05').inventory).toEqual({ ore: 16 });
+
+    expect(types(g.run({ kind: 'operations' }))).not.toContain('contract_defaulted');
+    g.submit('c05', [{ type: 'pay', contract: 'k1', obligation: 1, amount: 60 }]);
+    expect(types(resolve(g))).toEqual([
+      'payment_made',
+      'contract_completed',
+      'round_resolved',
+      'round_opened',
+    ]);
+    expect(contract(g, 'k1').status).toEqual({ status: 'completed', accepted_turn: 1, turn: 2 });
+    expect(company(g, 'c05').cash).toBe(600 - 40 - 16 - 60);
+    expect(company(g, 'c01').cash).toBe(600 - 40 - 8 + 60);
+    expect(reputationOf(g.state(), company(g, 'c01'))).toMatchObject({
+      completed: 1,
+      defaulted: 0,
+    });
+    expect(reputationOf(g.state(), company(g, 'c05'))).toMatchObject({
+      completed: 1,
+      defaulted: 0,
+    });
+  });
+
+  it('defaults an unmet obligation at the end of its due turn, then cures it', () => {
+    const g = game({ starting_inventory: minerWithOre });
+    g.submit('c01', [oreForCash]);
+    resolve(g);
+    g.submit('c05', [{ type: 'accept_contract', contract: 'k1' }]);
+    resolve(g);
+    g.submit('c01', [{ type: 'deliver', contract: 'k1', obligation: 0, qty: 4 }]);
+    resolve(g);
+    g.run({ kind: 'operations' });
+    const defaults = g.closeTurn().filter((e) => e.type === 'contract_defaulted');
+    expect(defaults.map((e) => (e.type === 'contract_defaulted' ? e.payload : null))).toEqual([
+      { contract: 'k1', by: ['counterparty'], unmet_value: 60 },
+    ]);
+    expect(contract(g, 'k1').status).toMatchObject({
+      status: 'defaulted',
+      turn: 2,
+      by: ['counterparty'],
+    });
+    expect(reputationOf(g.state(), company(g, 'c05'))).toEqual({
+      completed: 0,
+      defaulted: 1,
+      cured: 0,
+      value_defaulted: 60,
+      value_cured: 0,
+    });
+    expect(reputationOf(g.state(), company(g, 'c05'), 1).defaulted).toBe(0);
+
+    g.submit('c05', [{ type: 'pay', contract: 'k1', obligation: 1, amount: 60 }]);
+    expect(types(resolve(g))).toEqual([
+      'payment_made',
+      'contract_cured',
+      'round_resolved',
+      'round_opened',
+    ]);
+    expect(contract(g, 'k1').status).toMatchObject({
+      status: 'cured',
+      defaulted_turn: 2,
+      defaulted_by: ['counterparty'],
+      turn: 3,
+      cured_value: 60,
+    });
+    expect(reputationOf(g.state(), company(g, 'c05'))).toMatchObject({
+      defaulted: 0,
+      cured: 1,
+      value_cured: 60,
+    });
+    expect(reputationOf(g.state(), company(g, 'c01'))).toMatchObject({ completed: 1, cured: 0 });
+  });
+
+  it('rejects what the lifecycle forbids, at submit time', () => {
+    const g = game({ starting_inventory: minerWithOre });
+    g.submit('c01', [oreForCash]);
+    resolve(g);
+    const codes = (events: Event[]) =>
+      events.map((e) => (e.type === 'action_rejected' ? e.payload.code : e.type));
+    expect(
+      codes(
+        g.submit('c09', [
+          { type: 'accept_contract', contract: 'k1' },
+          { type: 'accept_contract', contract: 'k9' },
+          { ...oreForCash, counterparty: 'c09' },
+          { ...oreForCash, escrow: true },
+          {
+            ...oreForCash,
+            obligations: [{ kind: 'cash', by: 'proposer', amount: 1, due_turn: 0 }],
+          },
+        ]),
+      ),
+    ).toEqual([
+      'NOT_A_PARTY',
+      'CONTRACT_NOT_FOUND',
+      'INVALID_ACTION',
+      'INVALID_ACTION',
+      'INVALID_ACTION',
+    ]);
+    expect(codes(g.submit('c01', [{ type: 'accept_contract', contract: 'k1' }]))).toEqual([
+      'NOT_A_PARTY',
+    ]);
+    expect(
+      codes(
+        g.submit('c05', [
+          { type: 'deliver', contract: 'k1', obligation: 0, qty: 1 },
+          { type: 'accept_contract', contract: 'k1' },
+        ]),
+      ),
+    ).toEqual(['CONTRACT_NOT_ACTIVE', 'action_submitted']);
+    resolve(g);
+    expect(
+      codes(
+        g.submit('c01', [
+          { type: 'deliver', contract: 'k1', obligation: 1, qty: 1 },
+          { type: 'deliver', contract: 'k1', obligation: 0, qty: 5 },
+          { type: 'pay', contract: 'k1', obligation: 1, amount: 60 },
+          { type: 'deliver', contract: 'k1', obligation: 0, qty: 4 },
+        ]),
+      ),
+    ).toEqual(['INVALID_ACTION', 'INVALID_ACTION', 'INVALID_ACTION', 'action_submitted']);
+    expect(
+      codes(g.submit('c05', [{ type: 'pay', contract: 'k1', obligation: 1, amount: 700 }])),
+    ).toEqual(['INVALID_ACTION']);
+  });
+
+  it('resolves a same-round withdraw and accept in company id order', () => {
+    const g = game({ starting_inventory: minerWithOre });
+    g.submit('c01', [oreForCash]);
+    resolve(g);
+    g.submit('c01', [{ type: 'withdraw_contract', contract: 'k1' }]);
+    g.submit('c05', [{ type: 'accept_contract', contract: 'k1' }]);
+    const events = resolve(g);
+    expect(types(events)).toEqual([
+      'contract_withdrawn',
+      'action_rejected',
+      'round_resolved',
+      'round_opened',
+    ]);
+    const late = events[1];
+    expect(late?.type === 'action_rejected' && late.payload).toMatchObject({
+      code: 'CONTRACT_NOT_ACTIVE',
+      reason: 'k1 is withdrawn',
+    });
+  });
+
+  it('expires a proposal left open past the next turn, and rejects a proposal explicitly', () => {
+    const g = game({ starting_inventory: minerWithOre });
+    g.submit('c01', [oreForCash]);
+    resolve(g);
+    g.submit('c01', [{ ...oreForCash, counterparty: 'c09' }]);
+    g.closeTurn();
+    g.submit('c09', [{ type: 'reject_contract', contract: 'k2' }]);
+    resolve(g);
+    expect(contract(g, 'k2').status).toEqual({ status: 'rejected', turn: 2 });
+    expect(contract(g, 'k1').status).toEqual({ status: 'proposed', turn: 1 });
+    expect(types(g.closeTurn())).toContain('contract_expired');
+    expect(contract(g, 'k1').status).toEqual({ status: 'expired', turn: 2 });
+  });
+
+  it('executes obligations itself under the enforced knob and defaults what it cannot', () => {
+    const g = game({ starting_inventory: minerWithOre }, { enforcement: 'enforced' });
+    g.submit('c01', [
+      {
+        ...oreForCash,
+        obligations: [
+          { kind: 'goods', by: 'proposer', good: 'ore', qty: 4, due_turn: 1 },
+          { kind: 'cash', by: 'counterparty', amount: 60, due_turn: 1 },
+        ],
+      },
+      {
+        ...oreForCash,
+        counterparty: 'c09',
+        obligations: [{ kind: 'cash', by: 'counterparty', amount: 5000, due_turn: 1 }],
+      },
+    ]);
+    resolve(g);
+    g.submit('c05', [{ type: 'accept_contract', contract: 'k1' }]);
+    g.submit('c09', [{ type: 'accept_contract', contract: 'k2' }]);
+    resolve(g);
+    const events = g.closeTurn();
+    expect(types(events).filter((t) => t.startsWith('contract_') || t.endsWith('_made'))).toEqual([
+      'delivery_made',
+      'payment_made',
+      'contract_completed',
+      'contract_defaulted',
+    ]);
+    expect(contract(g, 'k1').status.status).toBe('completed');
+    expect(contract(g, 'k2').status).toMatchObject({
+      status: 'defaulted',
+      by: ['counterparty'],
+      unmet_value: 5000,
+    });
+    expect(company(g, 'c05').inventory).toEqual({ ore: 16 });
+  });
+
+  it('defaults the active contracts of a bankrupt company and expires its proposals', () => {
+    const g = game({ starting_inventory: minerWithOre, starting_cash: 0, overdraft_limit: -30 });
+    g.submit('c01', [
+      {
+        ...oreForCash,
+        obligations: [{ kind: 'goods', by: 'proposer', good: 'ore', qty: 4, due_turn: 5 }],
+      },
+      { ...oreForCash, counterparty: 'c09' },
+    ]);
+    resolve(g);
+    g.submit('c05', [{ type: 'accept_contract', contract: 'k1' }]);
+    resolve(g);
+    const events = g.closeTurn();
+    const bankrupt = events.find((e) => e.type === 'company_bankrupt' && e.actor === 'c01');
+    expect(bankrupt?.type === 'company_bankrupt' && bankrupt.payload.contracts_defaulted).toEqual([
+      'k1',
+    ]);
+    expect(contract(g, 'k1').status).toMatchObject({
+      status: 'defaulted',
+      by: ['proposer'],
+      unmet_value: 60,
+    });
+    expect(contract(g, 'k2').status.status).toBe('expired');
   });
 });
