@@ -597,7 +597,7 @@ describe('contracts', () => {
       'NOT_A_PARTY',
       'CONTRACT_NOT_FOUND',
       'INVALID_ACTION',
-      'INVALID_ACTION',
+      'action_submitted',
       'INVALID_ACTION',
     ]);
     expect(codes(g.submit('c01', [{ type: 'accept_contract', contract: 'k1' }]))).toEqual([
@@ -720,5 +720,245 @@ describe('contracts', () => {
       unmet_value: 60,
     });
     expect(contract(g, 'k2').status.status).toBe('expired');
+  });
+});
+
+describe('trade layer', () => {
+  const contract = (g: ReturnType<typeof game>, id: string) => {
+    const k = g.state().contracts[ContractId.parse(id)];
+    if (k === undefined) throw new Error(`no contract ${id}`);
+    return k;
+  };
+  const resolve = (g: ReturnType<typeof game>) => g.run({ kind: 'resolve_round' });
+  const codes = (events: Event[]) =>
+    events.map((e) => (e.type === 'action_rejected' ? e.payload.code : e.type));
+  const minerWithOre = {
+    miner: { ore: 12 },
+    logger: {},
+    smelter: { ore: 12 },
+    mill: {},
+    toolmaker: {},
+    furniture_maker: {},
+  };
+  const escrowed = {
+    type: 'propose_contract',
+    counterparty: 'c05',
+    escrow: true,
+    terms_text: 'escrowed ore for cash',
+    obligations: [
+      { kind: 'goods', by: 'proposer', good: 'ore', qty: 4, due_turn: 2 },
+      { kind: 'cash', by: 'counterparty', amount: 60, due_turn: 2 },
+    ],
+  };
+
+  it('charges the escrow fee on acceptance, holds deposits, and releases both sides together', () => {
+    const g = game({ starting_inventory: minerWithOre });
+    g.submit('c01', [escrowed]);
+    resolve(g);
+    g.submit('c05', [{ type: 'accept_contract', contract: 'k1' }]);
+    const accepted = resolve(g).find((e) => e.type === 'contract_accepted');
+    expect(accepted?.type === 'contract_accepted' && accepted.payload.escrow_fee_per_side).toBe(3);
+    expect(company(g, 'c01').cash).toBe(597);
+    expect(company(g, 'c05').cash).toBe(597);
+
+    g.submit('c01', [{ type: 'deliver', contract: 'k1', obligation: 0, qty: 4 }]);
+    expect(types(resolve(g))).toEqual(['escrow_deposited', 'round_resolved']);
+    expect(company(g, 'c01').inventory).toEqual({ ore: 8 });
+    expect(company(g, 'c05').inventory).toEqual({ ore: 12 });
+    expect(contract(g, 'k1').obligations[0]?.met).toBe(4);
+
+    g.run({ kind: 'operations' });
+    g.submit('c05', [{ type: 'pay', contract: 'k1', obligation: 1, amount: 60 }]);
+    expect(types(resolve(g))).toEqual([
+      'escrow_deposited',
+      'escrow_released',
+      'contract_completed',
+      'round_resolved',
+      'round_opened',
+    ]);
+    expect(company(g, 'c05').inventory).toEqual({ ore: 16 });
+    expect(company(g, 'c01').cash).toBe(597 - 40 - 8 + 60);
+    expect(company(g, 'c05').cash).toBe(597 - 40 - 12 - 60);
+    expect(contract(g, 'k1').status.status).toBe('completed');
+  });
+
+  it('refunds escrow deposits when the latest due turn passes, then records the default', () => {
+    const g = game({ starting_inventory: minerWithOre });
+    g.submit('c01', [escrowed]);
+    resolve(g);
+    g.submit('c05', [{ type: 'accept_contract', contract: 'k1' }]);
+    resolve(g);
+    g.submit('c01', [{ type: 'deliver', contract: 'k1', obligation: 0, qty: 4 }]);
+    g.closeTurn();
+    expect(company(g, 'c01').inventory).toEqual({ ore: 8 });
+    const events = g.closeTurn();
+    expect(types(events).filter((t) => t.startsWith('escrow') || t.startsWith('contract'))).toEqual(
+      ['escrow_refunded', 'contract_defaulted'],
+    );
+    expect(company(g, 'c01').inventory).toEqual({ ore: 12 });
+    expect(contract(g, 'k1')).toMatchObject({
+      status: { status: 'defaulted', by: ['counterparty'], unmet_value: 60 },
+      obligations: [{ met: 0 }, { met: 0 }],
+    });
+  });
+
+  it('refuses escrow when the enforcement knob is none', () => {
+    const g = game({ starting_inventory: minerWithOre }, { enforcement: 'none' });
+    expect(codes(g.submit('c01', [escrowed]))).toEqual(['INVALID_ACTION']);
+  });
+
+  it('caps messages per round and delivers them at round end', () => {
+    const g = game();
+    const post = (text: string) => ({ type: 'post_message', text });
+    expect(
+      codes(
+        g.submit('c01', [
+          post('a'),
+          post('b'),
+          post('c'),
+          post('d'),
+          { type: 'send_dm', to: 'c01', text: 'me' },
+        ]),
+      ),
+    ).toEqual([
+      'action_submitted',
+      'action_submitted',
+      'action_submitted',
+      'MESSAGE_CAP_REACHED',
+      'INVALID_ACTION',
+    ]);
+    g.submit('c05', [{ type: 'send_dm', to: 'c01', text: 'ore?' }]);
+    expect(g.state().messages).toEqual([]);
+    expect(types(resolve(g))).toEqual([
+      'message_posted',
+      'message_posted',
+      'message_posted',
+      'dm_sent',
+      'round_resolved',
+      'round_opened',
+    ]);
+    expect(g.state().messages.at(-1)).toEqual({
+      turn: 1,
+      round: 1,
+      from: 'c05',
+      channel: { kind: 'dm', to: 'c01' },
+      text: 'ore?',
+    });
+  });
+
+  it('moves cash and goods by transfer and refuses what the sender lacks', () => {
+    const g = game({ starting_inventory: minerWithOre });
+    expect(
+      codes(
+        g.submit('c01', [
+          { type: 'transfer', to: 'c05', what: { kind: 'cash', amount: 10 } },
+          { type: 'transfer', to: 'c05', what: { kind: 'goods', good: 'ore', qty: 2 } },
+          { type: 'transfer', to: 'c05', what: { kind: 'goods', good: 'timber', qty: 1 } },
+          { type: 'transfer', to: 'c05', what: { kind: 'cash', amount: 5000 } },
+        ]),
+      ),
+    ).toEqual([
+      'action_submitted',
+      'action_submitted',
+      'INSUFFICIENT_INVENTORY',
+      'INSUFFICIENT_CASH',
+    ]);
+    resolve(g);
+    expect(company(g, 'c01')).toMatchObject({ cash: 590, inventory: { ore: 10 } });
+    expect(company(g, 'c05')).toMatchObject({ cash: 610, inventory: { ore: 14 } });
+  });
+
+  it('sells one extra license in the operations step and unlocks its orders', () => {
+    const poor = game();
+    expect(codes(poor.submit('c01', [{ type: 'buy_license', role: 'smelter' }]))).toEqual([
+      'INSUFFICIENT_CASH',
+    ]);
+    const g = game({ starting_cash: 2000, starting_inventory: minerWithOre });
+    expect(codes(g.submit('c01', [{ type: 'buy_license', role: 'miner' }]))).toEqual([
+      'INVALID_ACTION',
+    ]);
+    resolve(g);
+    g.submit('c01', [
+      { type: 'buy_license', role: 'smelter' },
+      { type: 'produce', good: 'ingot', qty: 1 },
+    ]);
+    expect(types(g.closeTurn())).toContain('license_bought');
+    expect(company(g, 'c01')).toMatchObject({
+      roles: ['miner', 'smelter'],
+      cash: 2000 - 1500 - 40 - 12,
+    });
+    expect(codes(g.submit('c01', [{ type: 'produce', good: 'ingot', qty: 6 }]))).toEqual([
+      'action_submitted',
+    ]);
+    expect(codes(g.submit('c05', [{ type: 'buy_license', role: 'mill' }]))).toEqual([
+      'action_submitted',
+    ]);
+    g.closeTurn();
+    expect(company(g, 'c01').inventory).toEqual({ ingot: 6 });
+    expect(codes(g.submit('c01', [{ type: 'buy_license', role: 'mill' }]))).toEqual([
+      'INVALID_ACTION',
+    ]);
+  });
+
+  it('rebrands only when the knob is on, and resets reputation from that turn', () => {
+    const off = game();
+    expect(codes(off.submit('c01', [{ type: 'rebrand', name: 'Newco' }]))).toEqual([
+      'INVALID_ACTION',
+    ]);
+    const g = game({ starting_inventory: minerWithOre }, { rebranding: 'on' });
+    g.submit('c01', [
+      {
+        ...escrowed,
+        escrow: false,
+        obligations: [{ kind: 'goods', by: 'proposer', good: 'ore', qty: 1, due_turn: 1 }],
+      },
+    ]);
+    resolve(g);
+    g.submit('c05', [{ type: 'accept_contract', contract: 'k1' }]);
+    resolve(g);
+    g.submit('c01', [{ type: 'deliver', contract: 'k1', obligation: 0, qty: 1 }]);
+    resolve(g);
+    g.run({ kind: 'operations' });
+    expect(reputationOf(g.state(), company(g, 'c01')).completed).toBe(1);
+    g.submit('c01', [{ type: 'rebrand', name: 'Newco' }]);
+    expect(types(g.closeTurn())).toContain('company_rebranded');
+    expect(company(g, 'c01')).toMatchObject({ name: 'Newco', identity_since_turn: 2 });
+    expect(company(g, 'c01').cash).toBe(600 - 40 - 11 - 300 - 40 - 11);
+    expect(reputationOf(g.state(), company(g, 'c01')).completed).toBe(0);
+  });
+
+  it("auctions a bankrupt company's license to the highest bid at or above the reserve", () => {
+    const g = game({ starting_cash: 2000 });
+    g.inject({
+      type: 'company_bankrupt',
+      payload: { cash: -300, contracts_defaulted: [], inventory_scrapped: {} },
+      actor: 'c05',
+    });
+    expect(g.state().auctions).toEqual({ smelter: { reserve: 750, closes_turn: 2, bids: {} } });
+    expect(codes(g.submit('c01', [{ type: 'bid_license', role: 'smelter', amount: 800 }]))).toEqual(
+      ['INVALID_ACTION'],
+    );
+    g.closeTurn();
+    expect(
+      codes(
+        g.submit('c01', [
+          { type: 'bid_license', role: 'smelter', amount: 700 },
+          { type: 'bid_license', role: 'smelter', amount: 800 },
+        ]),
+      ),
+    ).toEqual(['INVALID_ACTION', 'action_submitted']);
+    g.submit('c09', [{ type: 'bid_license', role: 'smelter', amount: 900 }]);
+    const sold = g.closeTurn().find((e) => e.type === 'license_auctioned');
+    expect(sold?.type === 'license_auctioned' && sold.payload).toEqual({
+      role: 'smelter',
+      result: { kind: 'sold', winner: 'c09', bid: 900 },
+    });
+    expect(company(g, 'c09')).toMatchObject({ roles: ['toolmaker', 'smelter'] });
+    expect(company(g, 'c09').cash).toBe(2000 - 2 * (40 + 6) - 900);
+    expect(company(g, 'c01').roles).toEqual(['miner']);
+    expect(g.state().auctions).toEqual({});
+    expect(codes(g.submit('c01', [{ type: 'bid_license', role: 'smelter', amount: 800 }]))).toEqual(
+      ['INVALID_ACTION'],
+    );
   });
 });
