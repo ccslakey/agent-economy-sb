@@ -15,6 +15,7 @@ import {
   apply,
   fold,
   initialState,
+  observe,
   proRata,
   reputationOf,
   rngFor,
@@ -960,5 +961,108 @@ describe('trade layer', () => {
     expect(codes(g.submit('c01', [{ type: 'bid_license', role: 'smelter', amount: 800 }]))).toEqual(
       ['INVALID_ACTION'],
     );
+  });
+});
+
+describe('observation', () => {
+  it('shows the company its own view, the market, and reputation per the knob', () => {
+    const g = game({
+      starting_inventory: {
+        miner: { ore: 12 },
+        logger: {},
+        smelter: { ore: 12 },
+        mill: {},
+        toolmaker: { tool: 2 },
+        furniture_maker: {},
+      },
+    });
+    g.submit('c01', [
+      {
+        type: 'propose_contract',
+        counterparty: 'c05',
+        escrow: false,
+        terms_text: '',
+        obligations: [{ kind: 'goods', by: 'proposer', good: 'ore', qty: 4, due_turn: 3 }],
+      },
+      { type: 'post_message', text: 'ore for sale' },
+    ]);
+    g.submit('c09', [{ type: 'sell_npc', good: 'tool', qty: 2 }]);
+    const news = {
+      contracts_changed: [ContractId.parse('k1')],
+      messages: g
+        .run({ kind: 'resolve_round' })
+        .flatMap((e) =>
+          e.type === 'message_posted'
+            ? [
+                {
+                  turn: 1,
+                  round: 1 as const,
+                  from: CompanyId.parse('c01'),
+                  channel: { kind: 'public' as const },
+                  text: e.payload.text,
+                },
+              ]
+            : [],
+        ),
+    };
+    const seen = observe(g.state(), company(g, 'c05'), news, 6);
+    expect(seen).toMatchObject({
+      turn: 1,
+      round: 2,
+      min_turns: 30,
+      end_hazard: 0.1,
+      you: {
+        id: 'c05',
+        roles: ['smelter'],
+        cash: 600,
+        inventory: { ore: 12 },
+        capacity: { ingot: 6 },
+      },
+      contracts: {
+        active: [],
+        proposed_to_you: ['k1'],
+        proposed_by_you: [],
+        changed_since_last_round: ['k1'],
+      },
+      messages: { public: [{ from: 'c01', text: 'ore for sale' }], dms: [] },
+      round_budget: { tool_calls_left: 6 },
+    });
+    expect(seen.companies.map((c) => c.id)).toEqual(['c01', 'c03', 'c04', 'c05', 'c09']);
+    expect(seen.companies[0]?.model).toBeNull();
+    expect(seen.reputation).toEqual({
+      c01: { completed: 0, defaulted: 0, cured: 0, value_defaulted: 0, value_cured: 0 },
+      c03: { completed: 0, defaulted: 0, cured: 0, value_defaulted: 0, value_cured: 0 },
+      c04: { completed: 0, defaulted: 0, cured: 0, value_defaulted: 0, value_cured: 0 },
+      c05: { completed: 0, defaulted: 0, cured: 0, value_defaulted: 0, value_cured: 0 },
+      c09: { completed: 0, defaulted: 0, cured: 0, value_defaulted: 0, value_cured: 0 },
+    });
+    expect(seen.market.last_turn).toEqual({});
+    g.closeTurn();
+    const next = observe(g.state(), company(g, 'c01'), { contracts_changed: [], messages: [] }, 8);
+    expect(next.market.last_turn).toEqual({
+      tool: { qty: 2, price: 220 },
+      furniture: { qty: 0, price: 640 },
+    });
+    expect(next.contracts.proposed_by_you).toEqual(['k1']);
+  });
+  it('hides reputation or shows only your own per the knob, and names models when visible', () => {
+    const hidden = game({}, { reputation_visibility: 'hidden' });
+    expect(
+      observe(hidden.state(), company(hidden, 'c01'), { contracts_changed: [], messages: [] }, 8)
+        .reputation,
+    ).toBeNull();
+    const own = game({}, { reputation_visibility: 'own_only', model_identity: 'visible' });
+    const seen = observe(
+      own.state(),
+      company(own, 'c01'),
+      { contracts_changed: [], messages: [] },
+      8,
+    );
+    expect(Object.keys(seen.reputation ?? {})).toEqual(['c01']);
+    expect(seen.companies[0]?.model).toBe('honest_trader');
+    own.closeTurn();
+    expect(() =>
+      observe(own.state(), company(own, 'c01'), { contracts_changed: [], messages: [] }, 8),
+    ).not.toThrow();
   });
 });
