@@ -1,0 +1,28 @@
+# The default population: 12 companies, 2 per role, all scripted honest traders.
+# Anything not named here takes the default the schema declares. A test parses this file,
+# so a stale key fails `pnpm check` instead of a run.
+seed: 1
+experiment_id: baseline
+population:
+  - { id: c01, name: Ironreach, role: miner, driver: { kind: bot, strategy: honest_trader } }
+  - { id: c02, name: Deepcut, role: miner, driver: { kind: bot, strategy: honest_trader } }
+  - { id: c03, name: Fellwood, role: logger, driver: { kind: bot, strategy: honest_trader } }
+  - { id: c04, name: Saltpine, role: logger, driver: { kind: bot, strategy: honest_trader } }
+  - { id: c05, name: Emberworks, role: smelter, driver: { kind: bot, strategy: honest_trader } }
+  - { id: c06, name: Kilnmark, role: smelter, driver: { kind: bot, strategy: honest_trader } }
+  - { id: c07, name: Birchline Mills, role: mill, driver: { kind: bot, strategy: honest_trader } }
+  - { id: c08, name: Sawyer and Sons, role: mill, driver: { kind: bot, strategy: honest_trader } }
+  - { id: c09, name: Anvilgate, role: toolmaker, driver: { kind: bot, strategy: honest_trader } }
+  - { id: c10, name: Quill Forge, role: toolmaker, driver: { kind: bot, strategy: honest_trader } }
+  - {
+      id: c11,
+      name: Hearthstead,
+      role: furniture_maker,
+      driver: { kind: bot, strategy: honest_trader },
+    }
+  - {
+      id: c12,
+      name: Oakhollow,
+      role: furniture_maker,
+      driver: { kind: bot, strategy: honest_trader },
+    }
