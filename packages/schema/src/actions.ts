@@ -1,7 +1,7 @@
 import { z } from 'zod';
+import { ContractTerms, ObligationIndex } from './contracts.ts';
 import { CompanyId, ContractId } from './ids.ts';
 import { type Flat, keysOf, taggedUnion } from './internal.ts';
-import { ContractTerms, ObligationIndex } from './state.ts';
 import { Cash, ExtractSource, FinalGood, Good, ProducedGood, Qty, Role } from './world.ts';
 
 // What an agent may put in one POST /v1/actions batch. The record below is the single source of
