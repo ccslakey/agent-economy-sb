@@ -1,6 +1,8 @@
 import {
   type Company,
   type CompanyId,
+  type Contract,
+  type ContractId,
   demandFor,
   type Event,
   type EventOf,
@@ -11,6 +13,7 @@ import {
   type GroveId,
   groveId,
   type Inventory,
+  type Obligation,
   type PendingOrders,
   type RunState,
 } from '@agent-economy/schema';
@@ -56,6 +59,7 @@ export function initialState(started: EventOf<'run_started'>): RunState {
     seq: started.seq,
     next_contract_no: 1,
     submitted: [],
+    pending_actions: [],
     companies,
     groves,
     contracts: {},
@@ -80,6 +84,28 @@ function withCompany(state: RunState, id: CompanyId, change: (c: Company) => Com
   return { ...state, companies: { ...state.companies, [id]: change(company) } };
 }
 
+function contractOf(state: RunState, id: ContractId): Contract {
+  const contract = state.contracts[id];
+  if (contract === undefined) throw new Error(`unknown contract ${id}`);
+  return contract;
+}
+
+function withContract(
+  state: RunState,
+  id: ContractId,
+  change: (k: Contract) => Contract,
+): RunState {
+  return { ...state, contracts: { ...state.contracts, [id]: change(contractOf(state, id)) } };
+}
+
+/** Record `units` toward one obligation, keeping the non-empty tuple shape. */
+function meet(contract: Contract, index: number, units: number): Contract {
+  const [first, ...rest] = contract.obligations;
+  const bump = <O extends Obligation>(o: O, i: number): O =>
+    i === index ? { ...o, met: o.met + units } : o;
+  return { ...contract, obligations: [bump(first, 0), ...rest.map((o, i) => bump(o, i + 1))] };
+}
+
 function actorOf(event: Event): CompanyId {
   if (event.actor === null) throw new Error(`${event.type} needs an actor`);
   return event.actor;
@@ -100,6 +126,7 @@ function applyBody(state: RunState, event: Event): RunState {
       return {
         ...state,
         submitted: [],
+        pending_actions: [],
         phase:
           event.round === null || event.round === 3
             ? { kind: 'operations' }
@@ -173,7 +200,13 @@ function applyBody(state: RunState, event: Event): RunState {
             },
           }));
         default:
-          return marked;
+          return {
+            ...marked,
+            pending_actions: [
+              ...marked.pending_actions,
+              { company: actor, index: event.payload.index, action },
+            ],
+          };
       }
     }
     case 'action_rejected':
@@ -259,20 +292,124 @@ function applyBody(state: RunState, event: Event): RunState {
         standing: { kind: 'bankrupt', turn: state.turn },
       }));
 
-    // Trade layer (units 4 and 5) folds here once those units land.
-    case 'contract_proposed':
-    case 'contract_accepted':
+    case 'contract_proposed': {
+      const { contract: id, ...terms } = event.payload;
+      const [first, ...rest] = terms.obligations;
+      const contract: Contract = {
+        ...terms,
+        id,
+        obligations: [{ ...first, met: 0 }, ...rest.map((o) => ({ ...o, met: 0 }))],
+        status: { status: 'proposed', turn: state.turn },
+      };
+      return {
+        ...state,
+        next_contract_no: state.next_contract_no + 1,
+        contracts: { ...state.contracts, [id]: contract },
+      };
+    }
+    case 'contract_accepted': {
+      const { contract: id, escrow_fee_per_side } = event.payload;
+      let next = withContract(state, id, (k) => ({
+        ...k,
+        status: { status: 'active', accepted_turn: state.turn },
+      }));
+      if (escrow_fee_per_side > 0) {
+        const k = contractOf(state, id);
+        for (const party of [k.proposer, k.counterparty]) {
+          next = withCompany(next, party, (c) => ({ ...c, cash: c.cash - escrow_fee_per_side }));
+        }
+      }
+      return next;
+    }
     case 'contract_rejected':
+      return withContract(state, event.payload.contract, (k) => ({
+        ...k,
+        status: { status: 'rejected', turn: state.turn },
+      }));
     case 'contract_withdrawn':
+      return withContract(state, event.payload.contract, (k) => ({
+        ...k,
+        status: { status: 'withdrawn', turn: state.turn },
+      }));
     case 'contract_expired':
-    case 'delivery_made':
-    case 'payment_made':
+      return withContract(state, event.payload.contract, (k) => ({
+        ...k,
+        status: { status: 'expired', turn: state.turn },
+      }));
+    case 'delivery_made': {
+      const { contract: id, obligation, good, qty } = event.payload;
+      const from = actorOf(event);
+      const k = contractOf(state, id);
+      const to = k.proposer === from ? k.counterparty : k.proposer;
+      let next = withContract(state, id, (c) => meet(c, obligation, qty));
+      next = withCompany(next, from, (c) => ({
+        ...c,
+        inventory: addGoods(c.inventory, good, -qty),
+      }));
+      return withCompany(next, to, (c) => ({ ...c, inventory: addGoods(c.inventory, good, qty) }));
+    }
+    case 'payment_made': {
+      const { contract: id, obligation, amount } = event.payload;
+      const from = actorOf(event);
+      const k = contractOf(state, id);
+      const to = k.proposer === from ? k.counterparty : k.proposer;
+      let next = withContract(state, id, (c) => meet(c, obligation, amount));
+      next = withCompany(next, from, (c) => ({ ...c, cash: c.cash - amount }));
+      return withCompany(next, to, (c) => ({ ...c, cash: c.cash + amount }));
+    }
+    case 'contract_completed':
+      return withContract(state, event.payload.contract, (k) =>
+        k.status.status === 'active'
+          ? {
+              ...k,
+              status: {
+                status: 'completed',
+                accepted_turn: k.status.accepted_turn,
+                turn: state.turn,
+              },
+            }
+          : k,
+      );
+    case 'contract_defaulted': {
+      const { contract: id, by, unmet_value } = event.payload;
+      return withContract(state, id, (k) =>
+        k.status.status === 'active'
+          ? {
+              ...k,
+              status: {
+                status: 'defaulted',
+                accepted_turn: k.status.accepted_turn,
+                turn: state.turn,
+                by,
+                unmet_value,
+              },
+            }
+          : k,
+      );
+    }
+    case 'contract_cured': {
+      const { contract: id, cured_value } = event.payload;
+      return withContract(state, id, (k) =>
+        k.status.status === 'defaulted'
+          ? {
+              ...k,
+              status: {
+                status: 'cured',
+                accepted_turn: k.status.accepted_turn,
+                defaulted_turn: k.status.turn,
+                defaulted_by: k.status.by,
+                turn: state.turn,
+                cured_value,
+              },
+            }
+          : k,
+      );
+    }
+
+    // Escrow, messages, and licenses (unit 5) fold here once that unit lands.
     case 'escrow_deposited':
     case 'escrow_released':
     case 'escrow_refunded':
-    case 'contract_completed':
-    case 'contract_defaulted':
-    case 'contract_cured':
     case 'message_posted':
     case 'dm_sent':
     case 'license_bought':

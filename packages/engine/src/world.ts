@@ -1,9 +1,14 @@
 import {
   type Company,
+  type CompanyId,
+  type Contract,
   type FinalGood,
   GOODS,
   type Good,
+  type Obligation,
+  type Party,
   producerOf,
+  type Reputation,
   ROLES,
   type RunState,
   SHOCK_RULES,
@@ -36,6 +41,62 @@ export function demandFactor(state: RunState, good: FinalGood): number {
     }
   }
   return factor;
+}
+
+/** Reference value of what an obligation still owes. */
+export function remainingValue(state: RunState, obligation: Obligation): number {
+  if (obligation.kind === 'cash') return obligation.amount - obligation.met;
+  return (obligation.qty - obligation.met) * state.config.economy.reference_prices[obligation.good];
+}
+
+export function partyOf(contract: Contract, company: CompanyId): Party | null {
+  if (contract.proposer === company) return 'proposer';
+  if (contract.counterparty === company) return 'counterparty';
+  return null;
+}
+
+/**
+ * Derived from contracts, never stored. Counts closures from the company's current identity
+ * onward and no later than `asOf`, which is how the public_delayed knob lags by a turn. Both
+ * parties get credit for a completion. A cure counts as completed for the party that never
+ * defaulted and as cured for the one that did.
+ */
+export function reputationOf(
+  state: RunState,
+  company: Company,
+  asOf: number = state.turn,
+): Reputation {
+  const rep: Reputation = {
+    completed: 0,
+    defaulted: 0,
+    cured: 0,
+    value_defaulted: 0,
+    value_cured: 0,
+  };
+  for (const contract of Object.values(state.contracts)) {
+    const side = partyOf(contract, company.id);
+    if (side === null) continue;
+    const { status } = contract;
+    if (
+      status.status !== 'completed' &&
+      status.status !== 'defaulted' &&
+      status.status !== 'cured'
+    ) {
+      continue;
+    }
+    if (status.turn > asOf || status.turn < company.identity_since_turn) continue;
+    if (status.status === 'completed') rep.completed += 1;
+    else if (status.status === 'defaulted') {
+      if (status.by.includes(side)) {
+        rep.defaulted += 1;
+        rep.value_defaulted += status.unmet_value;
+      }
+    } else if (status.defaulted_by.includes(side)) {
+      rep.cured += 1;
+      rep.value_cured += status.cured_value;
+    } else rep.completed += 1;
+  }
+  return rep;
 }
 
 /** Net worth at the end of the game: cash plus inventory at the end inventory fraction of reference. A bankrupt company scores 0. */
