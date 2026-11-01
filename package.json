@@ -14,7 +14,7 @@
     "test": "vitest run",
     "build": "pnpm --filter @agent-economy/dashboard build",
     "dashboard": "pnpm --filter @agent-economy/dashboard dev",
-    "server": "nodemon"
+    "api": "nodemon"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.4",

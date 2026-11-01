@@ -67,10 +67,10 @@ The runner creates the run, plays every round (LLM companies through `claude -p`
 ## Start the API
 
 ```sh
-DATABASE_URL=postgres://localhost/agent_economy ADMIN_TOKEN=change-me PORT=3000 pnpm server
+DATABASE_URL=postgres://localhost/agent_economy ADMIN_TOKEN=change-me PORT=3000 pnpm api
 ```
 
-`pnpm server` runs the API under nodemon and restarts it when anything under the API, engine, schema, or agent docs changes.
+`pnpm api` runs the API under nodemon and restarts it when anything under the API, engine, schema, or agent docs changes.
 
 ## Inspect a run
 
