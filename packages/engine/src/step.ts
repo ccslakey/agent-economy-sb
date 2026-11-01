@@ -831,7 +831,7 @@ function scrap(current: () => RunState, emit: (body: Body) => void): void {
 }
 
 function upkeep(current: () => RunState, emit: (body: Body) => void): void {
-  const { upkeep: amount, storage_cost_per_unit } = current().config.economy;
+  const { upkeep: amount, storage_cost_per_unit, turn_income } = current().config.economy;
   for (const c of solvent(current())) {
     emit({ type: 'upkeep_charged', payload: { amount }, actor: c.id });
     const units = Object.values(c.inventory).reduce((sum, n) => sum + (n ?? 0), 0);
@@ -842,5 +842,8 @@ function upkeep(current: () => RunState, emit: (body: Body) => void): void {
         actor: c.id,
       });
     }
+    // Only when the knob is on, so a log from before it existed replays unchanged.
+    if (turn_income > 0)
+      emit({ type: 'income_paid', payload: { amount: turn_income }, actor: c.id });
   }
 }

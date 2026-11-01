@@ -21,6 +21,8 @@ export const Economy = z.object({
     furniture_maker: { plank: 6, tool: 2 },
   }),
   upkeep: Cash.default(40),
+  /** Paid to every solvent company in the operations step, after upkeep. Zero keeps the economy closed. */
+  turn_income: Cash.nonnegative().default(0),
   storage_cost_per_unit: Cash.default(1),
   demand: z
     .record(FinalGood, DemandCurve)
@@ -68,7 +70,8 @@ export const Knobs = z.object({
   admin_visibility_notice: z.enum(['told', 'not_told']).default('told'),
   horizon: Horizon.default({ kind: 'random', min_turns: 30, hazard: 0.1 }),
   shocks: z.enum(['off', 'on']).default('on'),
-  context_persistence: z.enum(['per_round', 'per_turn']).default('per_round'),
+  /** per_round starts a fresh session each round, per_turn resumes it across a turn's rounds, persistent keeps one session for the whole game that waits between rounds. */
+  context_persistence: z.enum(['per_round', 'per_turn', 'persistent']).default('per_round'),
   /** 'default' means `economy.demand`; any other value must be a key of `economy.demand_profiles`. */
   demand_profile: z.string().default('default'),
   /** `on` shows every company's input shortfalls and output stock in the observation. */

@@ -160,6 +160,23 @@ export function buildMcpServer(client: GameClient): McpServer {
   );
 
   server.registerTool(
+    'wait_for_round',
+    {
+      description:
+        'Wait until the next round opens, then return your fresh observation. Pass the turn and round you just acted in, from your observation. Returns status "ended" with the final scores when the game is over. Spends no tool call. For a session that plays the whole game.',
+      inputSchema: { turn: z.number().int(), round: z.number().int() },
+    },
+    async ({ turn, round }) => {
+      for (;;) {
+        const text = await client.call('GET', `/v1/wait?turn=${turn}&round=${round}`);
+        if (text.startsWith('HTTP ')) return { content: [{ type: 'text' as const, text }] };
+        const { status } = JSON.parse(text) as { status: string };
+        if (status !== 'waiting') return { content: [{ type: 'text' as const, text }] };
+      }
+    },
+  );
+
+  server.registerTool(
     'bug_report',
     {
       description: 'Report anything confusing or broken about the game or this API.',

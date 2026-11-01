@@ -49,6 +49,8 @@ export function describe(event: Event): string {
       return `scrapped ${event.payload.qty} ${event.payload.good} for ${event.payload.proceeds}`;
     case 'upkeep_charged':
       return `upkeep ${event.payload.amount}`;
+    case 'income_paid':
+      return `income ${event.payload.amount}`;
     case 'storage_charged':
       return `storage ${event.payload.amount} for ${event.payload.units} units`;
     case 'company_bankrupt':

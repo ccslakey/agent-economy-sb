@@ -41,7 +41,12 @@ export const Observation = z.object({
       z.object({ qty: Qty, price: Cash, proceeds: Cash }),
     ),
     /** What last turn's operations step charged this company. */
-    last_turn_charges: z.object({ upkeep: Cash, storage: Cash, storage_units: Qty }),
+    last_turn_charges: z.object({
+      upkeep: Cash,
+      storage: Cash,
+      storage_units: Qty,
+      income: Cash,
+    }),
   }),
   /** The NPC buys any good as scrap at this price per unit, any quantity, in the operations step. */
   scrap_per_unit: z.record(Good, z.number()),
