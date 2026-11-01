@@ -226,6 +226,21 @@ describe('agent routes', () => {
       headers: run.as('c05'),
     });
     expect(closed.statusCode).toBe(409);
+    await api().close();
+    app = await buildServer({
+      store: run.store,
+      adminToken: 'admin',
+      docsDir,
+      clock: frozenClock(),
+    });
+    const archived = await api().inject({
+      method: 'GET',
+      url: `/admin/runs/${run.run_id}/events?after=0`,
+      headers: { 'x-admin-token': 'admin' },
+    });
+    expect((archived.json() as { events: { type: string }[] }).events.at(-1)?.type).toBe(
+      'run_ended',
+    );
   });
 
   it('delivers contracts and messages at round end and lists them', async () => {
@@ -311,6 +326,12 @@ describe('agent routes', () => {
     });
     const notes = await api().inject({ method: 'GET', url: '/v1/notes', headers: run.as('c01') });
     expect(notes.json()).toEqual({ text: 'trust c05' });
+    const adminNotes = await api().inject({
+      method: 'GET',
+      url: `/admin/runs/${run.run_id}/notes/c01`,
+      headers: { 'x-admin-token': 'admin' },
+    });
+    expect(adminNotes.json()).toEqual({ text: 'trust c05' });
 
     await api().inject({
       method: 'POST',
