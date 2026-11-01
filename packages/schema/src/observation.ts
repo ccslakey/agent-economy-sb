@@ -30,7 +30,18 @@ export const Observation = z.object({
     /** Per output good, after active shocks. Derived from ROLES, never stored. */
     capacity: z.partialRecord(Good, Qty),
     pending_orders: PendingOrders,
+    /** Inputs per unit of each good this company can make. Empty for extracted goods. */
+    recipes: z.partialRecord(Good, z.partialRecord(Good, Qty)),
+    /** Cash plus inventory at the end-of-game valuation, as it stands now. */
+    net_worth: Cash,
+    /** What this company sold to the NPC last turn, and what it earned. */
+    last_turn_sales: z.partialRecord(
+      FinalGood,
+      z.object({ qty: Qty, price: Cash, proceeds: Cash }),
+    ),
   }),
+  /** The reference price of every good: the base for scrap, escrow fees, and the end inventory value. */
+  reference_prices: z.record(Good, Cash),
   /** Everyone still in the game. `model` is null unless the model identity knob is `visible`. */
   companies: z.array(
     z.object({
@@ -54,3 +65,15 @@ export const Observation = z.object({
   round_budget: z.object({ tool_calls_left: z.number().int().nonnegative() }),
 });
 export type Observation = z.infer<typeof Observation>;
+
+/** An agent's standing plan, revised over the game. Each field is short prose. */
+export const Plan = z.object({
+  early: z.string().max(600),
+  mid: z.string().max(600),
+  late: z.string().max(600),
+  /** What the agent is doing right now and why. */
+  now: z.string().max(600),
+  /** How the agent feels the game is going. Kept for the record, never interpreted. */
+  thoughts: z.string().max(600),
+});
+export type Plan = z.infer<typeof Plan>;

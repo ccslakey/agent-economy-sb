@@ -65,7 +65,14 @@ export type Company = z.infer<typeof Company>;
 export const Grove = z.object({ id: GroveId, stock: Qty });
 export type Grove = z.infer<typeof Grove>;
 
-export const MarketClear = z.object({ turn: Turn, good: FinalGood, qty: Qty, price: Cash });
+export const MarketClear = z.object({
+  turn: Turn,
+  good: FinalGood,
+  qty: Qty,
+  price: Cash,
+  /** Units each seller sold that turn, so an agent can see its own sales. */
+  sales: z.partialRecord(CompanyId, Qty),
+});
 export type MarketClear = z.infer<typeof MarketClear>;
 
 export const Channel = z.discriminatedUnion('kind', [

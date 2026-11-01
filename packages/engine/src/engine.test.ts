@@ -186,8 +186,8 @@ describe('operations step', () => {
     );
     expect(furniture?.type === 'npc_market_cleared' && furniture.payload.price).toBe(640);
     expect(g.state().market.clears).toEqual([
-      { turn: 1, good: 'tool', qty: 2, price: 220 },
-      { turn: 1, good: 'furniture', qty: 0, price: 640 },
+      { turn: 1, good: 'tool', qty: 2, price: 220, sales: { c09: 2 } },
+      { turn: 1, good: 'furniture', qty: 0, price: 640, sales: {} },
     ]);
     expect(g.state()).toMatchObject({ turn: 2, phase: { kind: 'round', round: 1 } });
     expect(company(g, 'c09').pending_orders.produce).toEqual({});
@@ -1041,6 +1041,18 @@ describe('observation', () => {
       tool: { qty: 2, price: 220 },
       furniture: { qty: 0, price: 640 },
     });
+    const seller = observe(
+      g.state(),
+      company(g, 'c09'),
+      { contracts_changed: [], messages: [] },
+      8,
+    );
+    expect(seller.you.last_turn_sales).toEqual({ tool: { qty: 2, price: 220, proceeds: 440 } });
+    expect(seller.you.recipes).toEqual({ tool: { ingot: 2 } });
+    expect(seller.reference_prices.tool).toBe(160);
+    expect(seller.you.net_worth).toBe(seller.you.cash);
+    expect(next.you.recipes).toEqual({ ore: {} });
+    expect(next.you.net_worth).toBe(next.you.cash + 12 * 15 * 0.5);
     expect(next.contracts.proposed_by_you).toEqual(['k1']);
   });
   it('hides reputation or shows only your own per the knob, and names models when visible', () => {

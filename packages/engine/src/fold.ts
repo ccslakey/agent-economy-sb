@@ -277,7 +277,7 @@ function applyBody(state: RunState, event: Event): RunState {
         ...next,
         market: {
           intercept: { ...next.market.intercept, [good]: intercept },
-          clears: [...next.market.clears, { turn: state.turn, good, qty, price }],
+          clears: [...next.market.clears, { turn: state.turn, good, qty, price, sales }],
         },
       };
     }
