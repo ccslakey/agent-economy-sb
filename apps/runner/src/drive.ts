@@ -231,7 +231,13 @@ export async function drive(options: DriveOptions): Promise<DriveResult> {
   ) => {
     const client = clients.get(company);
     if (client === undefined) return;
-    const observation = Observation.parse(JSON.parse(await client.call('GET', '/v1/observation')));
+    const observed = await client.call('GET', '/v1/observation');
+    if (observed.startsWith('HTTP ')) {
+      // The round is closed for this company, usually because failed sessions spent its budget.
+      log(`${company}: bot skipped this round: ${observed.slice(0, 120)}`);
+      return;
+    }
+    const observation = Observation.parse(JSON.parse(observed));
     const contracts = Contract.array().parse(
       (JSON.parse(await client.call('GET', '/v1/contracts')) as { contracts: unknown[] }).contracts,
     );

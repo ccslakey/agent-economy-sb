@@ -38,6 +38,8 @@ export type RunMetrics = {
   gini: number;
   messages: { public: number; dm: number };
   dm_share: number | null;
+  /** Companies handed to a bot mid-run. A run with any is not a clean replicate. */
+  bot_handoffs: number;
   /** Mean coefficient of variation of unit price across a turn's contracts for a good, null where no turn had two. */
   price_dispersion: Partial<Record<Good, number | null>>;
   npc_sales: Record<FinalGood, number>;
@@ -85,6 +87,7 @@ export function runMetrics(started: EventOf<'run_started'>, rest: readonly Event
   const contracts: ContractCounts = { proposed: 0, accepted: 0, completed: 0, defaulted: 0 };
   let penalties = 0;
   let bankruptcies = 0;
+  let bot_handoffs = 0;
   const npc_sales = Object.fromEntries(FINAL_GOODS.map((g) => [g, 0])) as Record<FinalGood, number>;
   for (const e of rest) {
     if (e.type === 'contract_proposed') contracts.proposed += 1;
@@ -93,6 +96,7 @@ export function runMetrics(started: EventOf<'run_started'>, rest: readonly Event
     else if (e.type === 'contract_defaulted') contracts.defaulted += 1;
     else if (e.type === 'penalty_charged') penalties += e.payload.amount;
     else if (e.type === 'company_bankrupt') bankruptcies += 1;
+    else if (e.type === 'agent_replaced_by_bot') bot_handoffs += 1;
     else if (e.type === 'npc_market_cleared') npc_sales[e.payload.good] += e.payload.qty;
   }
   const closuresByRole = new Map<Role, { closed: number; defaulted: number }>();
@@ -137,6 +141,7 @@ export function runMetrics(started: EventOf<'run_started'>, rest: readonly Event
     gini: gini(scores),
     messages: { public: pub, dm },
     dm_share: rate(dm, state.messages.length),
+    bot_handoffs,
     price_dispersion: priceDispersion(state),
     npc_sales,
   };

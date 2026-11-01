@@ -54,7 +54,9 @@ const Output = z.object({
     .optional(),
 });
 
-const QUOTA = /rate limit|usage limit|too many requests|429|overloaded|quota|capacity/i;
+/** Subscription limits read "You've hit your 5-hour limit · resets 8:30am"; API limits say rate limit or 429. */
+const QUOTA =
+  /rate limit|usage limit|hour limit|hit your .{0,20}limit|resets \d|too many requests|429|overloaded|quota|capacity/i;
 
 export function classify(text: string): 'quota' | 'error' {
   return QUOTA.test(text) ? 'quota' : 'error';

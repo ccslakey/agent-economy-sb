@@ -35,6 +35,7 @@ describe('metrics', () => {
     expect(m.welfare).toBe(worth(played.state) - worth(first));
     // Starting cash plus the starting inventory at half reference.
     expect(worth(first)).toBeGreaterThan(12 * 600);
+    expect(m.bot_handoffs).toBe(0);
     expect(m.gini).toBeGreaterThanOrEqual(0);
     expect(m.gini).toBeLessThan(1);
   });
