@@ -4,7 +4,15 @@ export type Series = {
   label: string;
   /** One value per x, null where the series has no point (a good that did not clear). */
   points: (number | null)[];
+  /** Overrides the palette color. */
+  color?: string;
+  /** Drawn thin and grey behind the others, with no legend entry: context, not a subject. */
+  muted?: boolean;
 };
+
+const MUTED = '#BCC4CE';
+const colorOf = (s: Series, i: number): string =>
+  s.muted ? MUTED : (s.color ?? PALETTE[i % PALETTE.length] ?? MUTED);
 
 export const PALETTE = [
   '#1f77b4',
@@ -73,19 +81,24 @@ export function LineChart({
       .filter((d) => d !== null)
       .join(' ');
   return (
-    <figure style={{ margin: '0 0 16px' }}>
-      <figcaption style={{ fontSize: 13, fontWeight: 'bold' }}>{title}</figcaption>
-      <svg width={width} height={height} role="img" aria-label={title}>
+    <figure className="chart">
+      {title !== '' && <figcaption>{title}</figcaption>}
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={title}
+        style={{ maxWidth: width * 1.5 }}
+      >
         {yTicks.map((t) => (
           <g key={t}>
-            <line x1={pad.left} x2={width - pad.right} y1={sy(t)} y2={sy(t)} stroke="#eee" />
-            <text x={pad.left - 6} y={sy(t) + 4} fontSize={11} textAnchor="end" fill="#555">
+            <line x1={pad.left} x2={width - pad.right} y1={sy(t)} y2={sy(t)} stroke="#E8ECF1" />
+            <text x={pad.left - 6} y={sy(t) + 4} className="tick" textAnchor="end">
               {t}
             </text>
           </g>
         ))}
         {x.map((t) => (
-          <text key={t} x={sx(t)} y={height - 6} fontSize={11} textAnchor="middle" fill="#555">
+          <text key={t} x={sx(t)} y={height - 6} className="tick" textAnchor="middle">
             {t}
           </text>
         ))}
@@ -95,30 +108,36 @@ export function LineChart({
             x2={sx(marker)}
             y1={pad.top}
             y2={height - pad.bottom}
-            stroke="#999"
-            strokeDasharray="3 3"
+            stroke="#C2410C"
+            strokeDasharray="3 4"
           />
         )}
-        {series.map((s, i) => (
-          <g key={s.label} stroke={PALETTE[i % PALETTE.length]} fill={PALETTE[i % PALETTE.length]}>
-            <path d={path(s.points)} fill="none" strokeWidth={1.5} />
-            {s.points.map((p, j) => {
-              const xj = x[j];
-              return p === null || xj === undefined ? null : (
-                <circle key={xj} cx={sx(xj)} cy={sy(p)} r={2}>
-                  <title>{`${s.label}, turn ${xj}: ${p}`}</title>
-                </circle>
-              );
-            })}
-          </g>
-        ))}
+        {[...series.filter((s) => s.muted), ...series.filter((s) => !s.muted)].map((s) => {
+          const color = colorOf(s, series.indexOf(s));
+          return (
+            <g key={s.label} stroke={color} fill={color}>
+              <path d={path(s.points)} fill="none" strokeWidth={s.muted ? 1.25 : 1.75} />
+              {!s.muted &&
+                s.points.map((p, j) => {
+                  const xj = x[j];
+                  return p === null || xj === undefined ? null : (
+                    <circle key={xj} cx={sx(xj)} cy={sy(p)} r={2}>
+                      <title>{`${s.label}, turn ${xj}: ${p}`}</title>
+                    </circle>
+                  );
+                })}
+            </g>
+          );
+        })}
       </svg>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 12px', fontSize: 12 }}>
-        {series.map((s, i) => (
-          <span key={s.label} style={{ color: PALETTE[i % PALETTE.length] }}>
-            ■ {s.label}
-          </span>
-        ))}
+      <div className="legend">
+        {series.map((s, i) =>
+          s.muted ? null : (
+            <span key={s.label} style={{ color: colorOf(s, i) }}>
+              ■ {s.label}
+            </span>
+          ),
+        )}
       </div>
     </figure>
   );

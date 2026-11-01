@@ -1,3 +1,4 @@
+import type { RunMetrics } from '@agent-economy/engine';
 import { Event, type Knobs, type RunState } from '@agent-economy/schema';
 
 // Admin calls. The token lives in localStorage so a reload keeps it; nothing else is stored.
@@ -75,3 +76,40 @@ export type Cost = {
 
 export const fetchCost = (token: string, runId: string) =>
   admin<Cost>(token, `/admin/runs/${runId}/cost`);
+
+/** Download the raw event log as JSON. A plain link cannot carry the admin header. */
+export async function exportEvents(token: string, runId: string): Promise<void> {
+  const response = await fetch(`/admin/runs/${runId}/events`, {
+    headers: { 'x-admin-token': token },
+  });
+  if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
+  const url = URL.createObjectURL(await response.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${runId}-events.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export const fetchMetrics = (token: string, runId: string) =>
+  admin<RunMetrics>(token, `/admin/runs/${runId}/metrics`);
+
+/** One headless session. `result` is the CLI's JSON; its `result` string is the agent's own summary of the round. */
+export type Trace = {
+  id: string;
+  company: string;
+  turn: number;
+  round: number | null;
+  kind: 'round' | 'farming';
+  model: string | null;
+  result: { result?: string; usage?: { output_tokens_details?: { thinking_tokens?: number } } };
+  tokens_in: number;
+  tokens_out: number;
+  cost_usd: number;
+  duration_ms: number;
+};
+
+export const fetchTraces = (token: string, runId: string, company: string) =>
+  admin<{ traces: Trace[] }>(token, `/admin/runs/${runId}/traces?company=${company}`).then(
+    (r) => r.traces,
+  );

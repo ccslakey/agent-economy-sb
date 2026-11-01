@@ -1,5 +1,7 @@
+export { describe } from './describe.ts';
 export { addGoods, apply, fold, initialState } from './fold.ts';
 export { type ContractCounts, gini, type RunMetrics, runMetrics } from './metrics.ts';
+export { type Moment, type MomentKind, moments } from './moments.ts';
 export { newsFrom } from './news.ts';
 export { observe, type RoundNews } from './observe.ts';
 export { type Rng, rngFor } from './rng.ts';

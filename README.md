@@ -64,6 +64,8 @@ ADMIN_TOKEN=change-me node apps/runner/src/run.ts --api http://localhost:3000 --
 
 The runner creates the run, plays every round (LLM companies through `claude -p` with only the game tools, bots through the API), records a trace per session, pauses the run on a quota limit and resumes after a wait, hands a company to the honest trader bot after three failed sessions, and asks each LLM agent the farming questions when the game ends. Pass `--run <id>` to pick up an existing run.
 
+The dashboard's overview lists each run's notable moments (default waves, bankruptcies, shocks and the price reaction, lead changes, stalled trade), detected from the log by `packages/engine/src/moments.ts` with every claim citing event ids.
+
 ## Start the API
 
 ```sh

@@ -1,11 +1,10 @@
-import { scoreOf } from '@agent-economy/engine';
+import { describe, scoreOf } from '@agent-economy/engine';
 import { playBots, roster } from '@agent-economy/runner';
 import { CompanyId } from '@agent-economy/schema';
 import { expect, describe as group, it } from 'vitest';
 import {
   byTurn,
   companyRows,
-  describe,
   lastTurn,
   leaderboard,
   leaderSince,

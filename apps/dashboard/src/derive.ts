@@ -1,7 +1,16 @@
-import { apply, initialState, reputationOf, scoreOf } from '@agent-economy/engine';
+import {
+  apply,
+  contractValue,
+  initialState,
+  type RunMetrics,
+  reputationOf,
+  runMetrics,
+  scoreOf,
+} from '@agent-economy/engine';
 import type {
   Company,
   CompanyId,
+  Contract,
   Event,
   EventOf,
   FinalGood,
@@ -182,6 +191,40 @@ export function leaderSince(
   return turns[since] ?? null;
 }
 
+/** The spec's run metrics folded through the end of `turn`. */
+export function metricsAt(log: Log, turn: number): RunMetrics {
+  return runMetrics(
+    log.started,
+    log.rest.filter((e) => e.turn <= turn),
+  );
+}
+
+export type DriverRate = {
+  driver: string;
+  companies: number;
+  /** Completed plus defaulted contracts, counted once per party. */
+  closed: number;
+  defaulted: number;
+  rate: number | null;
+};
+
+/** Defaults over closures per driver (a model, or a bot strategy) as of `turn`, worst first. */
+export function defaultRateByDriver(state: RunState, turn: number): DriverRate[] {
+  const tallies = new Map<string, DriverRate>();
+  for (const c of Object.values(state.companies)) {
+    const driver = driverLabel(state, c.id);
+    const rep = reputationOf(state, c, turn);
+    const t = tallies.get(driver) ?? { driver, companies: 0, closed: 0, defaulted: 0, rate: null };
+    t.companies += 1;
+    t.closed += rep.completed + rep.defaulted;
+    t.defaulted += rep.defaulted;
+    tallies.set(driver, t);
+  }
+  return [...tallies.values()]
+    .map((t) => ({ ...t, rate: t.closed === 0 ? null : t.defaulted / t.closed }))
+    .sort((a, b) => (b.rate ?? -1) - (a.rate ?? -1));
+}
+
 /** The model for an LLM company, the strategy for a bot. */
 export function driverLabel(state: RunState, company: CompanyId): string {
   const entry = state.config.population.find((p) => p.id === company);
@@ -221,92 +264,6 @@ export function companyRows(state: RunState) {
     }));
 }
 
-/** A one-line description of an event for the timeline. */
-export function describe(event: Event): string {
-  switch (event.type) {
-    case 'action_submitted':
-      return `submitted ${event.payload.action.type}`;
-    case 'action_rejected':
-      return `rejected ${event.payload.action.type}: ${event.payload.code}, ${event.payload.reason}`;
-    case 'contract_proposed':
-      return `proposed ${event.payload.contract} to ${event.payload.counterparty}`;
-    case 'contract_accepted':
-      return `accepted ${event.payload.contract}`;
-    case 'contract_rejected':
-      return `rejected ${event.payload.contract}`;
-    case 'contract_withdrawn':
-      return `withdrew ${event.payload.contract}`;
-    case 'contract_expired':
-      return `${event.payload.contract} expired`;
-    case 'escrow_deposited':
-      return `deposited ${event.payload.units} on ${event.payload.contract}`;
-    case 'escrow_released':
-      return `${event.payload.contract} released to both sides`;
-    case 'escrow_refunded':
-      return `${event.payload.party} refunded on ${event.payload.contract}`;
-    case 'escrow_forfeited':
-      return `${event.payload.party} forfeited deposits on ${event.payload.contract}`;
-    case 'penalty_charged':
-      return `${event.payload.party} charged ${event.payload.amount} on ${event.payload.contract}`;
-    case 'contract_completed':
-      return `${event.payload.contract} completed`;
-    case 'contract_defaulted':
-      return `${event.payload.contract} defaulted by ${event.payload.by.join(' and ')} for ${event.payload.unmet_value}`;
-    case 'transfer_made':
-      return `transferred ${event.payload.what.kind === 'cash' ? `${event.payload.what.amount} cash` : `${event.payload.what.qty} ${event.payload.what.good}`} to ${event.payload.to}`;
-    case 'message_posted':
-      return `posted: ${event.payload.text}`;
-    case 'dm_sent':
-      return `to ${event.payload.to}: ${event.payload.text}`;
-    case 'extraction_completed':
-      return `extracted ${event.payload.qty} ${event.payload.good}`;
-    case 'production_completed':
-      return `produced ${event.payload.qty} ${event.payload.good}`;
-    case 'npc_market_cleared':
-      return `${event.payload.good} cleared ${event.payload.qty} at ${event.payload.price}`;
-    case 'scrap_sold':
-      return `scrapped ${event.payload.qty} ${event.payload.good} for ${event.payload.proceeds}`;
-    case 'upkeep_charged':
-      return `upkeep ${event.payload.amount}`;
-    case 'storage_charged':
-      return `storage ${event.payload.amount} for ${event.payload.units} units`;
-    case 'income_paid':
-      return `income ${event.payload.amount}`;
-    case 'company_bankrupt':
-      return `bankrupt at ${event.payload.cash} cash`;
-    case 'license_bought':
-      return `bought ${event.payload.role} license for ${event.payload.price}`;
-    case 'license_auctioned':
-      return event.payload.result.kind === 'sold'
-        ? `${event.payload.role} license sold to ${event.payload.result.winner} for ${event.payload.result.bid}`
-        : `${event.payload.role} license unsold`;
-    case 'company_rebranded':
-      return `rebranded ${event.payload.old_name} to ${event.payload.new_name}`;
-    case 'shock_applied':
-      return `shock ${event.payload.shock.kind}`;
-    case 'grove_regrew':
-      return `${event.payload.grove} regrew to ${event.payload.stock}`;
-    case 'bug_report_filed':
-      return `bug report: ${event.payload.text}`;
-    case 'agent_replaced_by_bot':
-      return `replaced by ${event.payload.strategy} bot: ${event.payload.reason}`;
-    case 'agent_trace_recorded':
-      return `trace ${event.payload.trace_id}`;
-    case 'run_started':
-    case 'round_opened':
-    case 'round_resolved':
-    case 'turn_closed':
-    case 'run_paused':
-    case 'run_resumed':
-    case 'run_ended':
-      return event.type.replace('_', ' ');
-    default: {
-      const _exhaustive: never = event;
-      return _exhaustive;
-    }
-  }
-}
-
 /** Public and private message counts per turn, from the state's message list. */
 export function messageRows(
   state: RunState,
@@ -317,4 +274,75 @@ export function messageRows(
     public: state.messages.filter((m) => m.turn === turn && m.channel.kind === 'public').length,
     dm: state.messages.filter((m) => m.turn === turn && m.channel.kind === 'dm').length,
   }));
+}
+
+// The trade network: one edge per pair of companies that accepted a contract or exchanged DMs.
+
+export type TradeEdge = {
+  a: CompanyId;
+  b: CompanyId;
+  /** Accepted contracts between the pair, whatever their status now. */
+  contracts: number;
+  /** Reference value of those contracts, both sides. */
+  value: number;
+  completed: number;
+  defaulted: number;
+  dms: number;
+};
+
+export type EdgeFilter = {
+  status: 'all' | 'completed' | 'defaulted' | 'active';
+  good: Good | 'all';
+};
+
+const pairKey = (x: CompanyId, y: CompanyId): string => (x < y ? `${x}|${y}` : `${y}|${x}`);
+
+/** Accepted contracts matching the filter. */
+export function acceptedContracts(state: RunState, filter: EdgeFilter): Contract[] {
+  return Object.values(state.contracts).filter((k) => {
+    const { status } = k.status;
+    if (status !== 'active' && status !== 'completed' && status !== 'defaulted') return false;
+    if (filter.status !== 'all' && status !== filter.status) return false;
+    if (
+      filter.good !== 'all' &&
+      !k.obligations.some((o) => o.kind === 'goods' && o.good === filter.good)
+    ) {
+      return false;
+    }
+    return true;
+  });
+}
+
+export function tradeEdges(state: RunState, filter: EdgeFilter): TradeEdge[] {
+  const edges = new Map<string, TradeEdge>();
+  const edge = (x: CompanyId, y: CompanyId): TradeEdge => {
+    const key = pairKey(x, y);
+    const found = edges.get(key);
+    if (found !== undefined) return found;
+    const made: TradeEdge = {
+      a: x < y ? x : y,
+      b: x < y ? y : x,
+      contracts: 0,
+      value: 0,
+      completed: 0,
+      defaulted: 0,
+      dms: 0,
+    };
+    edges.set(key, made);
+    return made;
+  };
+  for (const k of acceptedContracts(state, filter)) {
+    const e = edge(k.proposer, k.counterparty);
+    e.contracts += 1;
+    e.value += contractValue(state, k.obligations);
+    if (k.status.status === 'completed') e.completed += 1;
+    if (k.status.status === 'defaulted') e.defaulted += 1;
+  }
+  // DM-only edges show who talked without trading; a filtered view is about contracts only.
+  if (filter.status === 'all' && filter.good === 'all') {
+    for (const m of state.messages) {
+      if (m.channel.kind === 'dm' && m.channel.to !== m.from) edge(m.from, m.channel.to).dms += 1;
+    }
+  }
+  return [...edges.values()];
 }
