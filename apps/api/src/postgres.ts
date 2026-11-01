@@ -220,6 +220,17 @@ export class PostgresStore implements Store {
       .execute();
   }
 
+  async lastTurn(runId: RunId): Promise<number | null> {
+    const row = await this.db
+      .selectFrom('events')
+      .select('turn')
+      .where('run_id', '=', runId)
+      .orderBy('seq', 'desc')
+      .limit(1)
+      .executeTakeFirst();
+    return row?.turn ?? null;
+  }
+
   async listTraces(runId: RunId, company?: CompanyId): Promise<TraceRow[]> {
     let query = this.db.selectFrom('agent_traces').selectAll().where('run_id', '=', runId);
     if (company !== undefined) query = query.where('company_id', '=', company);

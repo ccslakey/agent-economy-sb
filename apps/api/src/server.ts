@@ -281,14 +281,32 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
     if (!(await admin(request, reply))) return;
     const runs = await options.store.listRuns();
     return {
-      runs: runs.map((r) => ({
-        id: r.id,
-        experiment_id: r.config.experiment_id,
-        seed: r.config.seed,
-        status: r.status,
-        turn: games.get(r.id)?.state.turn ?? null,
-        phase: games.get(r.id)?.state.phase ?? null,
-      })),
+      runs: await Promise.all(
+        runs.map(async (r) => {
+          const traces = await options.store.listTraces(r.id);
+          const drivers = r.config.population.map((p) => p.driver);
+          return {
+            id: r.id,
+            experiment_id: r.config.experiment_id,
+            seed: r.config.seed,
+            status: r.status,
+            turn: games.get(r.id)?.state.turn ?? (await options.store.lastTurn(r.id)),
+            phase: games.get(r.id)?.state.phase ?? null,
+            knobs: r.config.knobs,
+            population: {
+              llm: drivers.filter((d) => d.kind === 'llm').length,
+              bot: drivers.filter((d) => d.kind === 'bot').length,
+              models: [...new Set(drivers.flatMap((d) => (d.kind === 'llm' ? [d.model] : [])))],
+            },
+            cost: {
+              sessions: traces.length,
+              tokens_in: traces.reduce((sum, t) => sum + t.tokens_in, 0),
+              tokens_out: traces.reduce((sum, t) => sum + t.tokens_out, 0),
+              cost_usd: traces.reduce((sum, t) => sum + t.cost_usd, 0),
+            },
+          };
+        }),
+      ),
     };
   });
 
