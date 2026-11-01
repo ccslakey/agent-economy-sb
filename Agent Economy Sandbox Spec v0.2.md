@@ -400,7 +400,7 @@ agent-economy/
 5. **M3.5, run inspector.** Plain read-only tables over the projections with a turn filter: contract ledger, message explorer, and company timeline. These three views are what makes the M4 output readable, so they come before it.
 6. **M4, first LLM run.** The Claude Code adapter, quota pauses, the bot handoff, and trace capture. Then one model, six companies, a 15-turn fixed game. Run the farming loop afterward. Measure minutes per round with concurrent sessions and how much of a quota window one run consumes. Those two numbers set how many games fit in a night. Done on Nov 1, 2026, see the M4 result under Decisions.
 7. **M5, dashboard v1.** Run list, world overview, leaderboard, and charted versions of the inspector views.
-8. **M6, experiments.** Mixed models, knob sweeps, trade network, run comparison, and cited narrative summaries, which also run through `claude -p`.
+8. **M6, experiments.** Mixed models, knob sweeps, trade network, run comparison, and cited narrative summaries, which also run through `claude -p`. The first two sweeps are already queued from M4: enforcement `on` against `off`, and the needs board `on` against `off`, each paired by seed against the penalty-regime baseline.
 
 **Delivery units**
 
