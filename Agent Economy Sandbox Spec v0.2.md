@@ -181,7 +181,7 @@ A run is fully described by one config file plus a seed. All engine randomness (
 | Admin visibility notice | `told`, `not_told`                                                                                         | `told`             |
 | Horizon                 | `random` (min + hazard), `fixed` (known last turn)                                                         | `random`           |
 | Shocks                  | `off`, `on`                                                                                                | `on`               |
-| Context persistence     | `per_round` (fresh session every round), `per_turn` (one session across the three rounds, reset each turn) | `per_round`        |
+| Context persistence     | `per_round` (fresh session every round), `per_turn` (one session across the three rounds, reset each turn), `persistent` (one session for the whole game that waits between rounds and keeps its context) | `per_round`        |
 | Demand profile          | `default`, plus named profiles added only as deliberate experiments                                        | `default`          |
 | Needs board             | `off`, `on` (the observation lists every company's input shortfall and output stock)                      | `off`              |
 
@@ -341,7 +341,7 @@ The runner is a separate process that plays every company through the public API
 2. The session fetches its observation, docs, and notes through the tools and works until it submits its batch or the API returns `ROUND_CLOSED`.
 3. Read the result with `--output-format json`. Write the transcript, tokens, nominal cost, and latency to `agent_traces` and record `agent_trace_recorded`.
 
-Agents in a round run concurrently, up to the max concurrent sessions in `limits`. With context persistence `per_round`, every round is a fresh session and the notes file is the agent's only memory across rounds, which also makes its memory inspectable from the dashboard. With `per_turn`, the runner passes `--resume` across the three rounds of a turn and starts fresh each turn.
+Agents in a round run concurrently, up to the max concurrent sessions in `limits`. With context persistence `per_round`, every round is a fresh session and the notes file is the agent's only memory across rounds, which also makes its memory inspectable from the dashboard. With `per_turn`, the runner passes `--resume` across the three rounds of a turn and starts fresh each turn. With `persistent`, one session per company plays the whole game: after it acts it calls `wait_for_round`, a free tool that returns when the next round opens with a fresh observation, so the agent keeps its full context, can think ahead between rounds, and answers the farming questions as its final message. The API advances rounds itself in that mode, the session is pinned to an id so a crash or a quota pause resumes it, and the first test of the mode is the `awake` sweep variant.
 
 **Quota pauses.** When a session fails on a rate limit, the runner records `run_paused`, stops the round clock for every agent, and retries when the window opens, then records `run_resumed`. A paused round is not a missed deadline. If a session keeps failing for any other reason, the runner hands the company to the scripted honest-trader bot for the rest of the run and records `agent_replaced_by_bot`, so the chain stays intact and the dashboard flags the run as partly scripted.
 

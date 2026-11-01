@@ -6,6 +6,7 @@ import {
   type Rng,
   type RoundNews,
   rngFor,
+  scoreOf,
   start,
   step,
 } from '@agent-economy/engine';
@@ -42,6 +43,12 @@ export type GameOptions = {
   rng?: (seed: number, turn: number) => Rng;
 };
 
+/** What GET /v1/wait returns: the next round with a fresh observation, the end of the game, or a timeout to poll again. */
+export type WaitResult =
+  | { status: 'waiting' }
+  | { status: 'round'; turn: number; round: number; observation: Observation }
+  | { status: 'ended'; turn: number; scores: Record<string, number> };
+
 export type SubmitOutcome =
   | { ok: true; results: ActionResult[] }
   | { ok: false; error: ActionError };
@@ -59,6 +66,8 @@ export class Game {
   /** Companies that sent an empty batch this round. The engine records nothing for an empty batch, so the game remembers it. */
   private emptyBatches = new Set<CompanyId>();
   private timer: unknown = null;
+  /** Persistent sessions blocked in GET /v1/wait, woken when a round opens or the run ends. */
+  private waiters: Array<() => void> = [];
   private queue: Promise<unknown> = Promise.resolve();
   private readonly clock: Clock;
   private readonly rngFor: (seed: number, turn: number) => Rng;
@@ -124,6 +133,57 @@ export class Game {
       this.state = apply(this.state, event);
       this.log.push(event);
     }
+    if (events.some((e) => e.type === 'round_opened' || e.type === 'run_ended')) {
+      const waiting = this.waiters;
+      this.waiters = [];
+      for (const wake of waiting) wake();
+    }
+  }
+
+  /**
+   * GET /v1/wait. Resolves when a round other than `after` is open or the run has ended, or
+   * after `timeoutMs` with `waiting` so the caller polls again. Spends no tool call.
+   */
+  async waitForRound(
+    company: CompanyId,
+    after: { turn: number; round: number },
+    timeoutMs: number,
+  ): Promise<WaitResult> {
+    const ready = (): WaitResult | null => {
+      const s = this.current();
+      if (s.phase.kind === 'ended') {
+        const scores: Record<string, number> = {};
+        for (const c of Object.values(s.companies)) scores[c.id] = scoreOf(s, c);
+        return { status: 'ended', turn: s.turn, scores };
+      }
+      if (s.phase.kind === 'round' && (s.turn !== after.turn || s.phase.round !== after.round)) {
+        const c = s.companies[company];
+        if (c === undefined) return null;
+        return {
+          status: 'round',
+          turn: s.turn,
+          round: s.phase.round,
+          observation: this.observation(c),
+        };
+      }
+      return null;
+    };
+    const now = ready();
+    if (now !== null) return now;
+    // The poll timeout is transport time, not game time, so it uses real timers rather than the
+    // run clock, which tests freeze.
+    await new Promise<void>((resolve) => {
+      const wake = () => {
+        clearTimeout(handle);
+        resolve();
+      };
+      const handle = setTimeout(() => {
+        this.waiters = this.waiters.filter((w) => w !== wake);
+        resolve();
+      }, timeoutMs);
+      this.waiters.push(wake);
+    });
+    return ready() ?? { status: 'waiting' };
   }
 
   company(id: CompanyId): Company | undefined {

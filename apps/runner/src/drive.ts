@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
@@ -58,25 +59,35 @@ export const roundPrompt = (turn: number, round: number, budget: number): string
   return `It is turn ${turn}, round ${round} of 3. Read your notes and your observation. Answer any proposals or messages that arrived, deliver and pay what you owe, and submit a batch with submit_actions, even an empty one. Update your notes if anything changed. ${budgetLine}`;
 };
 
+/** The one prompt a persistent session gets: the whole game, round after round, then the farming answers. */
+export const gamePrompt = (budget: number): string =>
+  `This session plays the whole game. Your context persists from the first round to the last, so you remember everything you see and do; notes are still useful as a summary but they are not your only memory. Start by reading rules.md, contracts.md, and api.md with the docs tool, then read your observation, then write your game plan with write_plan. Every round: submit one batch with submit_actions, even an empty one; on round 1 of each turn revise your plan with write_plan; keep your notes current with counterparties and open obligations. Then call wait_for_round with the turn and round you just acted in. It returns when the next round opens, with your fresh observation, and it costs no tool call. Before you call it, think ahead: what you will do if your proposals are accepted or rejected, what you owe and when it is due. You have ${budget} tool calls per round, not counting wait_for_round. A result of ROUND_CLOSED means the round has moved on; call wait_for_round with the last turn and round you saw. When wait_for_round returns status ended, write your final message: what wasted your time, what was confusing, what was missing, and which companies you thought were run by which model or bot, and why.`;
+
+export const RESUME_PROMPT =
+  'The game is still running and your session was resumed. Read your observation and continue the loop: act with submit_actions, then wait_for_round. When it returns status ended, write your final message with what wasted your time, what was confusing, what was missing, and which companies you thought were run by which model or bot.';
+
 const FARMING_PROMPT =
   'The game has ended. First call read_plan and read_notes: your plan, its thoughts field, and your notes are your record of the game, since your session may not remember it. Then answer in prose, briefly: what wasted your time, what was confusing, what was missing, and which companies did you think were run by which model or bot, and why?';
 
 /**
- * Create a run from a config and return its id. The runner advances rounds itself once every
- * session has ended, so auto_advance is forced off: a session still running when the last batch
- * lands cannot act again in the next round.
+ * Create a run from a config and return its id. With per-round or per-turn sessions the runner
+ * advances rounds itself once every session has ended, so auto_advance is forced off: a session
+ * still running when the last batch lands cannot act again in the next round. A persistent run
+ * is the opposite: sessions outlive rounds, so the API advances as soon as everyone has acted.
  */
 export async function createRun(
   api: string,
   adminToken: string,
   config: Record<string, unknown>,
 ): Promise<string> {
+  const knobs = config.knobs as { context_persistence?: string } | undefined;
+  const persistent = knobs?.context_persistence === 'persistent';
   const response = await fetch(`${api}/admin/runs`, {
     method: 'POST',
     headers: { 'x-admin-token': adminToken, 'content-type': 'application/json' },
     body: JSON.stringify({
       ...config,
-      limits: { ...(config.limits as object | undefined), auto_advance: false },
+      limits: { ...(config.limits as object | undefined), auto_advance: persistent },
     }),
   });
   if (!response.ok) throw new Error(`create run: ${response.status} ${await response.text()}`);
@@ -268,6 +279,90 @@ export async function drive(options: DriveOptions): Promise<DriveResult> {
       await recordTrace(company, state.turn, null, 'farming', driver.model, result);
     }
   };
+
+  /** One session for the whole game, resumed by its pinned id after a crash or a quota pause. */
+  const playWholeGame = async (
+    company: CompanyId,
+    driver: Extract<Driver, { kind: 'llm' }>,
+  ): Promise<void> => {
+    let sessionId = randomUUID();
+    let started = false;
+    for (;;) {
+      const before = await stateNow();
+      if (before.phase.kind === 'ended') return;
+      const result = await options.spawner({
+        prompt: started ? RESUME_PROMPT : gamePrompt(before.config.limits.round_tool_calls),
+        systemPrompt: options.systemPrompt,
+        model: driver.model,
+        effort: driver.effort,
+        mcpConfigPath: await mcpConfigPath(company),
+        cwd: options.workDir,
+        ...(started ? { resume: sessionId } : { sessionId }),
+      });
+      if (!result.ok && started && /no conversation found/i.test(result.message)) {
+        // The session died before the CLI wrote anything to resume. Start over under a new id.
+        sessionId = randomUUID();
+        started = false;
+        continue;
+      }
+      started = true;
+      const after = await stateNow();
+      await recordTrace(company, after.turn, null, 'round', driver.model, result);
+      if (result.ok) {
+        if (after.phase.kind === 'ended') {
+          await recordTrace(company, after.turn, null, 'farming', driver.model, result);
+          return;
+        }
+        log(`${company}: session returned at turn ${after.turn} before the end, resuming it`);
+        continue;
+      }
+      if (result.kind === 'quota') {
+        log(`${company}: quota limit, pausing the run for ${quotaWaitMs}ms`);
+        await admin('POST', `/admin/runs/${options.runId}/pause`, { reason: 'rate_limit' });
+        await options.sleep(quotaWaitMs);
+        await admin('POST', `/admin/runs/${options.runId}/resume`);
+        continue;
+      }
+      const count = (failures.get(company) ?? 0) + 1;
+      failures.set(company, count);
+      log(`${company}: session failed (${count}/${maxFailures}): ${result.message.slice(0, 200)}`);
+      if (count >= maxFailures) {
+        await handToBot(company, `session failed ${count} times: ${result.message.slice(0, 200)}`);
+        return;
+      }
+    }
+  };
+
+  /** Bot companies, and any company handed to a bot mid-game, act once per round while the API runs the clock. */
+  const playBotsUntilEnd = async (): Promise<void> => {
+    for (;;) {
+      const state = await stateNow();
+      if (state.phase.kind === 'ended') return;
+      if (state.phase.kind === 'round') {
+        const round = state.phase.round;
+        const key = `${state.turn}:${round}`;
+        for (const c of Object.values(state.companies)) {
+          const d = drivers.get(c.id);
+          if (d?.kind !== 'bot' || c.standing.kind !== 'solvent') continue;
+          if (state.submitted.includes(c.id) || acted.has(`${key}:${c.id}`)) continue;
+          acted.add(`${key}:${c.id}`);
+          await runBot(c.id, d.strategy, state, round);
+        }
+      }
+      await options.sleep(500);
+    }
+  };
+
+  if (first.config.knobs.context_persistence === 'persistent') {
+    if (!first.config.limits.auto_advance) {
+      log('warning: a persistent run needs limits.auto_advance on, or rounds never advance');
+    }
+    const llm = [...drivers].flatMap(([id, d]) => (d.kind === 'llm' ? [[id, d] as const] : []));
+    await Promise.all([...llm.map(([id, d]) => playWholeGame(id, d)), playBotsUntilEnd()]);
+    const ended = await stateNow();
+    const report = await admin<unknown>('GET', `/admin/runs/${options.runId}/report`);
+    return { turns: ended.turn, sessions, replaced, report };
+  }
 
   for (;;) {
     const state = await stateNow();

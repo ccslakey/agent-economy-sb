@@ -82,14 +82,33 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
     return { game, company };
   };
 
-  // Agent routes. Every one spends a tool call, so the agent's budget is a hard cap on API use.
+  // Agent routes. Every one but /v1/wait spends a tool call, so the budget is a hard cap on API use.
   app.addHook('onRequest', async (request, reply) => {
     if (!request.url.startsWith('/v1/')) return;
     const agent = agentOf(request);
     if (agent === null) return reply.code(401).send({ code: 'UNAUTHORIZED', reason: 'bad token' });
-    const spent = agent.game.spend(agent.company.id);
-    if (spent !== null) return fail(reply, spent);
+    if (!request.url.startsWith('/v1/wait')) {
+      const spent = agent.game.spend(agent.company.id);
+      if (spent !== null) return fail(reply, spent);
+    }
     request.agent = agent;
+  });
+
+  const WaitQuery = z.object({
+    turn: z.coerce.number().int(),
+    round: z.coerce.number().int(),
+    timeout_ms: z.coerce.number().int().min(0).max(25_000).default(20_000),
+  });
+
+  /** Long poll for a persistent session: the next round's observation, or the end of the game. */
+  app.get('/v1/wait', async (request, reply) => {
+    const query = WaitQuery.safeParse(request.query);
+    if (!query.success) {
+      return reply.code(400).send({ code: 'INVALID_ACTION', reason: 'pass turn and round' });
+    }
+    const { game, company } = request.agent;
+    const { turn, round, timeout_ms } = query.data;
+    return game.waitForRound(company.id, { turn, round }, timeout_ms);
   });
 
   app.get('/v1/observation', async (request) => {

@@ -220,3 +220,4 @@ variants:
             },
         }
   - { name: income-20, economy: { turn_income: 20 } }
+  - { name: awake, knobs: { context_persistence: persistent } }

@@ -465,6 +465,53 @@ describe('agent routes', () => {
     });
   });
 
+  it('long-polls the next round without spending budget', async () => {
+    const run = await startRun();
+    const waiting = await api().inject({
+      method: 'GET',
+      url: '/v1/wait?turn=1&round=1&timeout_ms=10',
+      headers: run.as('c01'),
+    });
+    expect(waiting.json()).toEqual({ status: 'waiting' });
+    for (let i = 0; i < 8; i++) {
+      await api().inject({
+        method: 'GET',
+        url: '/v1/wait?turn=1&round=1&timeout_ms=0',
+        headers: run.as('c01'),
+      });
+    }
+    const stillOpen = await api().inject({
+      method: 'GET',
+      url: '/v1/observation',
+      headers: run.as('c01'),
+    });
+    expect(stillOpen.statusCode).toBe(200);
+    // inject dispatches lazily, on the first then, so start the poll before advancing.
+    const pending = api()
+      .inject({
+        method: 'GET',
+        url: '/v1/wait?turn=1&round=1&timeout_ms=5000',
+        headers: run.as('c01'),
+      })
+      .then((r) => r);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await run.advance();
+    const next = (await pending).json() as {
+      status: string;
+      turn: number;
+      round: number;
+      observation: { round: number };
+    };
+    expect(next).toMatchObject({ status: 'round', turn: 1, round: 2 });
+    expect(next.observation.round).toBe(2);
+    const stale = await api().inject({
+      method: 'GET',
+      url: '/v1/wait?turn=1&round=1&timeout_ms=0',
+      headers: run.as('c01'),
+    });
+    expect(stale.json()).toMatchObject({ status: 'round', round: 2 });
+  });
+
   it('rolls traces up into a cost panel by company, model, and turn', async () => {
     const run = await startRun();
     const trace = (company: string, model: string, tokens_in: number) => ({
