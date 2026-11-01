@@ -4,6 +4,7 @@ import type { RunListing } from '../api.ts';
 import { defaultRateByDriver, type Log, lastTurn, metricsAt } from '../derive.ts';
 import { Cost } from './Cost.tsx';
 import { Leaderboard, NetWorth } from './Leaderboard.tsx';
+import { Moments } from './Moments.tsx';
 import { delta, fmt, money } from './ui.tsx';
 import { Prices, World } from './World.tsx';
 
@@ -127,6 +128,7 @@ export function Overview({
         <Prices log={log} turn={turn} />
       </div>
       <World log={log} state={state} turn={turn} />
+      <Moments token={token} runId={run.id} log={log} />
       <Cost token={token} runId={run.id} />
     </>
   );

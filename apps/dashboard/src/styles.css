@@ -498,3 +498,37 @@ fieldset.pills {
   flex-direction: column;
   gap: 2px;
 }
+
+/* Notable moments */
+
+.moment {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--hair);
+}
+.moment-turn {
+  width: 72px;
+  font-size: 13px;
+}
+.moment-text {
+  flex: 1 1 420px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.moment-cites {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: flex-start;
+}
+.cite {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--accent-dark);
+  background: #eef2ff;
+  border-radius: 4px;
+  padding: 3px 7px;
+  cursor: help;
+}

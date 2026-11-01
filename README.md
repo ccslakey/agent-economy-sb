@@ -64,6 +64,8 @@ ADMIN_TOKEN=change-me node apps/runner/src/run.ts --api http://localhost:3000 --
 
 The runner creates the run, plays every round (LLM companies through `claude -p` with only the game tools, bots through the API), records a trace per session, pauses the run on a quota limit and resumes after a wait, hands a company to the honest trader bot after three failed sessions, and asks each LLM agent the farming questions when the game ends. Pass `--run <id>` to pick up an existing run.
 
+After a run ends, `ADMIN_TOKEN=... node apps/runner/src/moments.ts --api http://localhost:3000 --run r-...` asks Claude for the run's notable moments. It reads a digest of the log, cites event ids, and only citations that name a real event inside the moment's turn range are stored; the dashboard's overview shows what survived and how many citations were dropped.
+
 ## Start the API
 
 ```sh
