@@ -1007,8 +1007,9 @@ describe('observation', () => {
     expect(seen).toMatchObject({
       turn: 1,
       round: 2,
-      min_turns: 30,
-      end_hazard: 0.1,
+      horizon: { kind: 'random', min_turns: 30, hazard: 0.1 },
+      scrap_per_unit: { ore: 4.5, timber: 6, ingot: 16.5, plank: 13.5, tool: 48, furniture: 120 },
+      needs: null,
       you: {
         id: 'c05',
         roles: ['smelter'],
@@ -1052,6 +1053,32 @@ describe('observation', () => {
     expect(seller.reference_prices.tool).toBe(160);
     expect(seller.you.net_worth).toBe(seller.you.cash);
     expect(next.you.recipes).toEqual({ ore: {} });
+    expect(next.you.last_turn_charges).toEqual({ upkeep: 40, storage: 12, storage_units: 12 });
+    expect(seller.you.last_turn_charges).toEqual({ upkeep: 40, storage: 0, storage_units: 0 });
+    const board = observe(
+      game({}, { needs_board: 'on', horizon: { kind: 'fixed', last_turn: 9 } }).state(),
+      company(g, 'c05'),
+      { contracts_changed: [], messages: [] },
+      8,
+    );
+    expect(board.horizon).toEqual({ kind: 'fixed', last_turn: 9 });
+    expect(board.needs?.find((n) => n.id === 'c05')).toEqual({ id: 'c05', wants: {}, offers: {} });
+    expect(board.needs?.find((n) => n.id === 'c09')).toEqual({ id: 'c09', wants: {}, offers: {} });
+    expect(board.needs).toHaveLength(5);
+    const later = game({}, { needs_board: 'on' });
+    later.submit('c05', [{ type: 'produce', good: 'ingot', qty: 6 }]);
+    later.closeTurn();
+    const afterTurn = observe(
+      later.state(),
+      company(later, 'c01'),
+      { contracts_changed: [], messages: [] },
+      8,
+    );
+    expect(afterTurn.needs?.find((n) => n.id === 'c05')).toEqual({
+      id: 'c05',
+      wants: { ore: 12 },
+      offers: { ingot: 6 },
+    });
     expect(next.you.net_worth).toBe(next.you.cash + 12 * 15 * 0.5);
     expect(next.contracts.proposed_by_you).toEqual(['k1']);
   });

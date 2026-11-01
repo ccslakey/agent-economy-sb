@@ -71,8 +71,10 @@ export function observe(
   return {
     turn: state.turn,
     round: state.phase.round,
-    min_turns: horizon.kind === 'random' ? horizon.min_turns : horizon.last_turn,
-    end_hazard: horizon.kind === 'random' ? horizon.hazard : 0,
+    horizon:
+      horizon.kind === 'fixed'
+        ? { kind: 'fixed', last_turn: horizon.last_turn }
+        : { kind: 'random', min_turns: horizon.min_turns, hazard: horizon.hazard },
     you: {
       id: company.id,
       name: company.name,
@@ -84,7 +86,17 @@ export function observe(
       recipes,
       net_worth: scoreOf(state, company),
       last_turn_sales: ownSales,
+      last_turn_charges:
+        company.charges.turn === state.turn - 1
+          ? {
+              upkeep: company.charges.upkeep,
+              storage: company.charges.storage,
+              storage_units: company.charges.storage_units,
+            }
+          : { upkeep: 0, storage: 0, storage_units: 0 },
     },
+    scrap_per_unit: scrapPerUnit(state),
+    needs: knobs.needs_board === 'on' ? needsBoard(state, solvent) : null,
     reference_prices: state.config.economy.reference_prices,
     companies: solvent.map((c) => ({
       id: c.id,
@@ -117,6 +129,41 @@ export function observe(
     reputation: visibleReputation(state, company, solvent),
     round_budget: { tool_calls_left: toolCallsLeft },
   };
+}
+
+function scrapPerUnit(state: RunState): Record<Good, number> {
+  const { reference_prices, scrap_fraction } = state.config.economy;
+  const out: Partial<Record<Good, number>> = {};
+  for (const good of GOODS) out[good] = reference_prices[good] * scrap_fraction;
+  return out as Record<Good, number>;
+}
+
+/** Each company's input shortfall for one full turn at capacity, and the output it holds. */
+function needsBoard(
+  state: RunState,
+  companies: readonly Company[],
+): {
+  id: CompanyId;
+  wants: Partial<Record<Good, number>>;
+  offers: Partial<Record<Good, number>>;
+}[] {
+  return companies.map((c) => {
+    const wants: Partial<Record<Good, number>> = {};
+    const offers: Partial<Record<Good, number>> = {};
+    for (const role of c.roles) {
+      const output = ROLES[role].output;
+      const capacity = capacityOf(state, c, output);
+      for (const input of GOODS) {
+        const perUnit = recipeOf(output)[input];
+        if (perUnit === undefined) continue;
+        const short = capacity * perUnit - (c.inventory[input] ?? 0);
+        if (short > 0) wants[input] = (wants[input] ?? 0) + short;
+      }
+      const held = c.inventory[output] ?? 0;
+      if (held > 0) offers[output] = held;
+    }
+    return { id: c.id, wants, offers };
+  });
 }
 
 function visibleReputation(
