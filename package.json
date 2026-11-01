@@ -12,7 +12,8 @@
     "format": "biome format --write .",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/dashboard/tsconfig.json",
     "test": "vitest run",
-    "build": "pnpm --filter @agent-economy/dashboard build"
+    "build": "pnpm --filter @agent-economy/dashboard build",
+    "dashboard": "pnpm --filter @agent-economy/dashboard dev"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.4",

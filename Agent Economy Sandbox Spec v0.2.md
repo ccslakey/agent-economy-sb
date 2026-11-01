@@ -418,6 +418,7 @@ Each unit is one pull request of about 500 lines or less and ends in a check tha
 10. The Claude Code adapter, quota pauses, bot handoff, and trace capture, then the M4 run.
 11. Dashboard v1, first half: the run list with knob, population, and cost columns, the world overview, and the leaderboard, drawn as inline SVG line charts over the event fold with the turn scrubber as a marker.
 12. Dashboard v1, second half: charted contract and message views, a cash and score chart in the company drill-down, and the cost panel.
+13. Sweeps: the run metrics as an engine function and an admin route, a sweep file that expands to runs paired by seed, a sweep command that plays them a few at a time and skips runs already ended, and the comparison table with paired differences against the first variant. The collusion signal waits for a roster with two sellers per role.
 
 ## Decisions
 

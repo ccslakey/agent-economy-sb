@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fold, reputationOf, scoreOf } from '@agent-economy/engine';
+import { fold, reputationOf, runMetrics, scoreOf } from '@agent-economy/engine';
 import {
   type ActionError,
   BotStrategy,
@@ -494,6 +494,16 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
       return { plans: await options.store.listPlans(id.data, company.data) };
     },
   );
+
+  app.get<{ Params: { id: string } }>('/admin/runs/:id/metrics', async (request, reply) => {
+    if (!(await admin(request, reply))) return;
+    const id = RunId.safeParse(request.params.id);
+    const [started, ...rest] = id.success ? await options.store.events(id.data) : [];
+    if (started?.type !== 'run_started') {
+      return reply.code(404).send({ code: 'NOT_FOUND', reason: 'no such run' });
+    }
+    return runMetrics(started, rest);
+  });
 
   // The end-of-run report: scores, each company's last plan and thoughts, its notes, every bug
   // report it filed, and its farming answer. Built from the store so it works for ended runs.
