@@ -169,12 +169,7 @@ function counterpartyError(
   return null;
 }
 
-function licenseError(
-  state: RunState,
-  company: Company,
-  role: Role,
-  price: number,
-): ActionError | null {
+function licenseError(company: Company, role: Role, price: number): ActionError | null {
   if (company.roles.includes(role)) {
     return { code: 'INVALID_ACTION', reason: `already licensed as ${role}` };
   }
@@ -295,7 +290,7 @@ function validate(state: RunState, company: Company, action: Action): ActionErro
       return null;
     }
     case 'buy_license':
-      return licenseError(state, company, action.role, state.config.economy.license_price);
+      return licenseError(company, action.role, state.config.economy.license_price);
     case 'bid_license': {
       const auction = state.auctions[action.role];
       if (auction === undefined || auction.closes_turn !== state.turn) {
@@ -304,7 +299,7 @@ function validate(state: RunState, company: Company, action: Action): ActionErro
       if (action.amount < auction.reserve) {
         return { code: 'INVALID_ACTION', reason: `the reserve is ${auction.reserve}` };
       }
-      return licenseError(state, company, action.role, action.amount);
+      return licenseError(company, action.role, action.amount);
     }
     case 'rebrand':
       if (state.config.knobs.rebranding === 'off') {
@@ -564,7 +559,7 @@ function companyChanges(current: () => RunState, emit: (body: Body) => void, rng
     const { buy_license, rebrand } = c.pending_orders;
     const s = current();
     const price = s.config.economy.license_price;
-    if (buy_license !== undefined && licenseError(s, c, buy_license, price) === null) {
+    if (buy_license !== undefined && licenseError(c, buy_license, price) === null) {
       emit({ type: 'license_bought', payload: { role: buy_license, price }, actor: c.id });
     }
     const after = current().companies[c.id];
@@ -585,7 +580,7 @@ function companyChanges(current: () => RunState, emit: (body: Body) => void, rng
     for (const c of solvent(s)) {
       const amount = c.pending_orders.bids[role];
       if (amount === undefined || amount < auction.reserve) continue;
-      if (licenseError(s, c, role, amount) !== null) continue;
+      if (licenseError(c, role, amount) !== null) continue;
       bids.push({ company: c, amount });
     }
     const top = Math.max(...bids.map((b) => b.amount));

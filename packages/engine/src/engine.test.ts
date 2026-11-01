@@ -989,21 +989,19 @@ describe('observation', () => {
     g.submit('c09', [{ type: 'sell_npc', good: 'tool', qty: 2 }]);
     const news = {
       contracts_changed: [ContractId.parse('k1')],
-      messages: g
-        .run({ kind: 'resolve_round' })
-        .flatMap((e) =>
-          e.type === 'message_posted'
-            ? [
-                {
-                  turn: 1,
-                  round: 1 as const,
-                  from: CompanyId.parse('c01'),
-                  channel: { kind: 'public' as const },
-                  text: e.payload.text,
-                },
-              ]
-            : [],
-        ),
+      messages: g.run({ kind: 'resolve_round' }).flatMap((e) =>
+        e.type === 'message_posted'
+          ? [
+              {
+                turn: 1,
+                round: 1 as const,
+                from: CompanyId.parse('c01'),
+                channel: { kind: 'public' as const },
+                text: e.payload.text,
+              },
+            ]
+          : [],
+      ),
     };
     const seen = observe(g.state(), company(g, 'c05'), news, 6);
     expect(seen).toMatchObject({
