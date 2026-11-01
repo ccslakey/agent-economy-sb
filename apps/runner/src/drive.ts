@@ -59,7 +59,7 @@ export const roundPrompt = (turn: number, round: number, budget: number): string
 };
 
 const FARMING_PROMPT =
-  'The game has ended. Answer in prose, briefly: what wasted your time, what was confusing, what was missing, and which companies did you think were run by which model or bot, and why?';
+  'The game has ended. First call read_plan and read_notes: your plan, its thoughts field, and your notes are your record of the game, since your session may not remember it. Then answer in prose, briefly: what wasted your time, what was confusing, what was missing, and which companies did you think were run by which model or bot, and why?';
 
 export async function drive(options: DriveOptions): Promise<DriveResult> {
   const log = options.log ?? (() => undefined);
