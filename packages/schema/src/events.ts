@@ -41,23 +41,22 @@ export const eventShapes = {
   action_rejected: z.object({ index: Index, action: Action }).extend(ActionError.shape),
   // contracts (actor: the company whose action caused it; null when the engine did)
   contract_proposed: ContractTerms.extend({ contract: ContractId }),
-  contract_accepted: z.object({ contract: ContractId, escrow_fee_per_side: Cash }),
+  contract_accepted: z.object({ contract: ContractId }),
   contract_rejected: z.object({ contract: ContractId }),
   contract_withdrawn: z.object({ contract: ContractId }),
   contract_expired: z.object({ contract: ContractId }),
-  delivery_made: z.object({
-    contract: ContractId,
-    obligation: ObligationIndex,
-    good: Good,
-    qty: Qty,
-  }),
-  payment_made: z.object({ contract: ContractId, obligation: ObligationIndex, amount: Cash }),
+  /** Units deposited with the engine toward an obligation. Goods or cash leave the depositor now. */
   escrow_deposited: z.object({ contract: ContractId, obligation: ObligationIndex, units: Qty }),
+  /** Every obligation is in; each deposit goes to its receiver. */
   escrow_released: z.object({ contract: ContractId }),
-  escrow_refunded: z.object({ contract: ContractId }),
+  /** This party performed; its deposits come back at no cost. */
+  escrow_refunded: z.object({ contract: ContractId, party: Party }),
+  /** This party did not perform; its deposits are destroyed. */
+  escrow_forfeited: z.object({ contract: ContractId, party: Party }),
+  /** Charged to a party that did not perform, as a share of its side of the contract. */
+  penalty_charged: z.object({ contract: ContractId, party: Party, amount: Cash }),
   contract_completed: z.object({ contract: ContractId }),
   contract_defaulted: z.object({ contract: ContractId, by: nonEmpty(Party), unmet_value: Cash }),
-  contract_cured: z.object({ contract: ContractId, cured_value: Cash }),
   transfer_made: z.object({ to: CompanyId, what: Transfer }),
   // talk
   message_posted: z.object({ text: z.string() }),
