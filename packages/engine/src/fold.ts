@@ -49,7 +49,7 @@ export function initialState(started: EventOf<'run_started'>): RunState {
       inventory: { ...config.economy.starting_inventory[entry.role] },
       pending_orders: emptyOrders,
       standing: { kind: 'solvent' },
-      charges: { turn: 0, upkeep: 0, storage: 0, storage_units: 0 },
+      charges: { turn: 0, upkeep: 0, storage: 0, storage_units: 0, income: 0 },
     };
   }
   const groves: Record<GroveId, Grove> = {};
@@ -295,7 +295,7 @@ function applyBody(state: RunState, event: Event): RunState {
       return withCompany(state, actorOf(event), (c) => ({
         ...c,
         cash: c.cash - amount,
-        charges: { turn: state.turn, upkeep: amount, storage: 0, storage_units: 0 },
+        charges: { turn: state.turn, upkeep: amount, storage: 0, storage_units: 0, income: 0 },
       }));
     }
     case 'storage_charged': {
@@ -308,7 +308,19 @@ function applyBody(state: RunState, event: Event): RunState {
           upkeep: c.charges.turn === state.turn ? c.charges.upkeep : 0,
           storage: amount,
           storage_units: units,
+          income: 0,
         },
+      }));
+    }
+    case 'income_paid': {
+      const { amount } = event.payload;
+      return withCompany(state, actorOf(event), (c) => ({
+        ...c,
+        cash: c.cash + amount,
+        charges:
+          c.charges.turn === state.turn
+            ? { ...c.charges, income: amount }
+            : { turn: state.turn, upkeep: 0, storage: 0, storage_units: 0, income: amount },
       }));
     }
     case 'grove_regrew': {

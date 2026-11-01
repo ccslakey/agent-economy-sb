@@ -229,6 +229,7 @@ const eventFixtures: Record<EventType, unknown> = {
   scrap_sold: env('scrap_sold', { good: 'ore', qty: 2, proceeds: 9 }, 'c01'),
   upkeep_charged: env('upkeep_charged', { amount: 40 }, 'c01'),
   storage_charged: env('storage_charged', { units: 13, amount: 13 }, 'c07'),
+  income_paid: env('income_paid', { amount: 20 }, 'c07'),
   grove_regrew: env('grove_regrew', { grove: 'g1', stock: 22 }),
   shock_applied: env('shock_applied', {
     shock: { kind: 'demand_slump', good: 'furniture' },

@@ -270,6 +270,8 @@ export function describe(event: Event): string {
       return `upkeep ${event.payload.amount}`;
     case 'storage_charged':
       return `storage ${event.payload.amount} for ${event.payload.units} units`;
+    case 'income_paid':
+      return `income ${event.payload.amount}`;
     case 'company_bankrupt':
       return `bankrupt at ${event.payload.cash} cash`;
     case 'license_bought':

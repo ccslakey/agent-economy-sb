@@ -219,3 +219,4 @@ variants:
               prompt_variant: neutral,
             },
         }
+  - { name: income-20, economy: { turn_income: 20 } }
