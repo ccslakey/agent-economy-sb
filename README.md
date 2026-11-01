@@ -64,10 +64,27 @@ ADMIN_TOKEN=change-me node apps/runner/src/run.ts --api http://localhost:3000 --
 
 The runner creates the run, plays every round (LLM companies through `claude -p` with only the game tools, bots through the API), records a trace per session, pauses the run on a quota limit and resumes after a wait, hands a company to the honest trader bot after three failed sessions, and asks each LLM agent the farming questions when the game ends. Pass `--run <id>` to pick up an existing run.
 
+## Start the API
+
+```sh
+DATABASE_URL=postgres://localhost/agent_economy ADMIN_TOKEN=change-me PORT=3000 pnpm api
+```
+
+`pnpm api` runs the API under nodemon and restarts it when anything under the API, engine, schema, or agent docs changes.
+
 ## Inspect a run
 
 ```sh
-cd apps/dashboard && API_URL=http://localhost:3000 pnpm dev
+API_URL=http://localhost:3000 pnpm dashboard
 ```
 
-Open the printed URL, paste the admin token, and pick a run. The three views fold the event log in the browser, so the turn scrubber works on any run. `DATABASE_URL=... node apps/runner/src/seed-db.ts` stores a bot game to look at without spending a session.
+Open the printed URL, paste the admin token, and pick a run from the list. The views fold the event log in the browser, so the turn scrubber works on any run.
+
+## Run a sweep
+
+```sh
+ADMIN_TOKEN=change-me node apps/runner/src/sweep.ts --api http://localhost:3000 --sweep configs/sweeps/m6-knobs.yaml --concurrency 2
+ADMIN_TOKEN=change-me node apps/runner/src/sweep.ts --api http://localhost:3000 --compare m6-knobs
+```
+
+A sweep file names a base config, a seed list, and the variants to compare. Every variant plays every seed, a few runs at a time, and the comparison table pairs runs by seed against the first variant. Rerunning a sweep skips the runs that already ended, so an interrupted night picks up where it stopped. `--compare` prints the table for runs already played. `DATABASE_URL=... node apps/runner/src/seed-db.ts` stores a bot game to look at without spending a session.

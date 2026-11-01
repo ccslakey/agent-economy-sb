@@ -61,6 +61,28 @@ export const roundPrompt = (turn: number, round: number, budget: number): string
 const FARMING_PROMPT =
   'The game has ended. First call read_plan and read_notes: your plan, its thoughts field, and your notes are your record of the game, since your session may not remember it. Then answer in prose, briefly: what wasted your time, what was confusing, what was missing, and which companies did you think were run by which model or bot, and why?';
 
+/**
+ * Create a run from a config and return its id. The runner advances rounds itself once every
+ * session has ended, so auto_advance is forced off: a session still running when the last batch
+ * lands cannot act again in the next round.
+ */
+export async function createRun(
+  api: string,
+  adminToken: string,
+  config: Record<string, unknown>,
+): Promise<string> {
+  const response = await fetch(`${api}/admin/runs`, {
+    method: 'POST',
+    headers: { 'x-admin-token': adminToken, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      ...config,
+      limits: { ...(config.limits as object | undefined), auto_advance: false },
+    }),
+  });
+  if (!response.ok) throw new Error(`create run: ${response.status} ${await response.text()}`);
+  return ((await response.json()) as { run_id: string }).run_id;
+}
+
 export async function drive(options: DriveOptions): Promise<DriveResult> {
   const log = options.log ?? (() => undefined);
   const quotaWaitMs = options.quotaWaitMs ?? 5 * 60 * 1000;

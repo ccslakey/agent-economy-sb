@@ -4,7 +4,7 @@ import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { parse as parseYaml } from 'yaml';
 import { claudeSpawner } from './claude.ts';
-import { drive } from './drive.ts';
+import { createRun, drive } from './drive.ts';
 import { formatReport } from './report.ts';
 
 // Drive a run to the end through headless Claude Code.
@@ -27,19 +27,7 @@ if (runId === undefined) {
   const configPath = args.get('config');
   if (configPath === undefined) throw new Error('pass --run <id> or --config <file>');
   const loaded = parseYaml(await readFile(configPath, 'utf8')) as Record<string, unknown>;
-  // The runner advances rounds itself once every session has ended, so a session still running
-  // when the last batch lands cannot act again in the next round.
-  const config = {
-    ...loaded,
-    limits: { ...(loaded.limits as object | undefined), auto_advance: false },
-  };
-  const response = await fetch(`${api}/admin/runs`, {
-    method: 'POST',
-    headers: { 'x-admin-token': adminToken, 'content-type': 'application/json' },
-    body: JSON.stringify(config),
-  });
-  if (!response.ok) throw new Error(`create run: ${response.status} ${await response.text()}`);
-  runId = ((await response.json()) as { run_id: string }).run_id;
+  runId = await createRun(api, adminToken, loaded);
   process.stdout.write(`created run ${runId}\n`);
 }
 

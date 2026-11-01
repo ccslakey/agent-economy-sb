@@ -277,6 +277,20 @@ describe('agent routes', () => {
       headers: { 'x-admin-token': 'admin' },
     });
     expect((relisted.json() as { runs: { turn: number | null }[] }).runs[0]?.turn).toBe(2);
+    const metrics = await api().inject({
+      method: 'GET',
+      url: `/admin/runs/${run.run_id}/metrics`,
+      headers: { 'x-admin-token': 'admin' },
+    });
+    expect(metrics.json()).toMatchObject({
+      turns: 2,
+      companies: 2,
+      bankruptcies: 0,
+      contracts: { proposed: 0, accepted: 0, completed: 0, defaulted: 0 },
+      default_rate: null,
+      penalties: 0,
+      messages: { public: 0, dm: 0 },
+    });
   });
 
   it('delivers contracts and messages at round end and lists them', async () => {
