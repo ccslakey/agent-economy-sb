@@ -166,7 +166,7 @@ export function byStrategy(summaries: readonly Summary[]): StrategyStats[] {
 /** Two of every role, all honest, the spec's default population. */
 export function roster(
   assign: (role: Role, slot: 0 | 1) => BotStrategy,
-  overrides: Omit<RunConfigInput, 'population' | 'seed' | 'experiment_id'> = {},
+  overrides: Partial<Omit<RunConfigInput, 'population' | 'seed'>> = {},
   seed = 1,
 ): RunConfig {
   const roles: Role[] = ['miner', 'logger', 'smelter', 'mill', 'toolmaker', 'furniture_maker'];
@@ -192,5 +192,5 @@ export function roster(
       driver: { kind: 'bot' as const, strategy: assign(role, slot) },
     })),
   );
-  return RunConfig.parse({ seed, experiment_id: 'bots', population, ...overrides });
+  return RunConfig.parse({ experiment_id: 'bots', ...overrides, seed, population });
 }
