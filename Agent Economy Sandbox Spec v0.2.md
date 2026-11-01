@@ -89,7 +89,7 @@ The intercept a\_t moves each turn by a small random factor (default ±5%) and b
 | Storage cost        | 1 per unit per turn                                            | All goods                                                                              |
 | Furniture demand    | a = 640, b = 30                                                | Per turn                                                                               |
 | Tool demand         | a = 240, b = 10                                                | Per turn                                                                               |
-| Reference prices    | Ore 15, timber 20, ingot 45, plank 30, tool 140, furniture 400 | Base for scrap, escrow fees, and the end inventory value                               |
+| Reference prices    | Ore 15, timber 20, ingot 55, plank 45, tool 160, furniture 400 | Base for scrap, escrow fees, and the end inventory value. Tuned in M3 so every role clears about 150 per turn at capacity before upkeep |
 | Scrap price         | 30% of reference                                               | Any good, any quantity                                                                 |
 | End inventory value | 50% of reference                                               | Valuation of inventory in the final score, tuned in M3                                 |
 | Overdraft limit     | −200                                                           | Below this the company goes bankrupt                                                   |
@@ -425,10 +425,10 @@ Resolved on Oct 31, 2026. Each entry names the v0.1 question and where the answe
 - **Budget.** Agents run on a subscription through headless Claude Code, not metered API keys. Dollar caps are gone. The runner pauses on quota and M4 measures sessions per run and minutes per round.
 - **End-of-game inventory.** Scored at 50% of reference price, a tunable economy parameter, so holding unsold output is worth less than selling it and more than scrapping it.
 - **Late cures.** A cured default is its own ledger entry, separate from an open default, so it softens the mark without erasing it. The status is `cured`, replacing `completed_late`, because every late completion passes through a default first.
+- **Reference prices.** Tuned in M3 against scripted bots. At the v0.1 prices the honest mill completed dozens of contracts and still went bankrupt in every seed on a 10 per plank margin. Ingot 55, plank 45, and tool 160 give miner, logger, smelter, mill, and toolmaker about 150 per turn at capacity before upkeep. Over eight seeds with a defector, a greedy producer, a passive company, and a random bot in the roster, honest traders survived 62 of 64 times and scored four times the isolated producer.
 - **Buildout order.** The schema package comes first because every later unit imports it. The three inspector views come before the first LLM run because reading trajectories is the bottleneck. M2 hand-plays through the MCP server rather than curl. M3 opens with a determinism test. Work lands in ten units of about 500 lines, each ending in a rerunnable check.
 - **Demand across runs.** Demand parameters stay fixed and the seed is the replicate. Experiments pair runs by seed across knob settings and start with three to five seeds per setting. A different demand curve is a named profile knob, never an edit to the economy table.
 
 ## Open questions
 
-- [ ] Reference prices leave the mill at roughly 20 margin per turn against 300 for the furniture maker. M3 tunes this, but the same prices set scoring and scrap, so a retune touches three systems.
 - [ ] Confirm that running a dozen concurrent headless sessions overnight is within the subscription plan's terms.

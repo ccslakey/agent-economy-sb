@@ -31,7 +31,7 @@ export const Economy = z.object({
   demand_profiles: z.record(z.string(), z.record(FinalGood, DemandCurve)).default({}),
   reference_prices: z
     .record(Good, Cash)
-    .default({ ore: 15, timber: 20, ingot: 45, plank: 30, tool: 140, furniture: 400 }),
+    .default({ ore: 15, timber: 20, ingot: 55, plank: 45, tool: 160, furniture: 400 }),
   scrap_fraction: Fraction.default(0.3),
   end_inventory_fraction: Fraction.default(0.5),
   overdraft_limit: Cash.default(-200),
@@ -82,7 +82,13 @@ export const Limits = z.object({
 });
 export type Limits = z.infer<typeof Limits>;
 
-export const BotStrategy = z.enum(['greedy_producer', 'honest_trader', 'defector', 'random']);
+export const BotStrategy = z.enum([
+  'greedy_producer',
+  'honest_trader',
+  'defector',
+  'random',
+  'passive',
+]);
 export type BotStrategy = z.infer<typeof BotStrategy>;
 
 /** Who plays the company. Bots are first-class so M3 tuning runs use the same config shape. */

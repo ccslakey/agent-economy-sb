@@ -257,7 +257,7 @@ describe('operations step', () => {
     g.submit('c09', [{ type: 'sell_npc', good: 'tool', qty: 30 }]);
     const events = g.closeTurn();
     const tools = events.find((e) => e.type === 'npc_market_cleared' && e.payload.good === 'tool');
-    expect(tools?.type === 'npc_market_cleared' && tools.payload.price).toBe(42);
+    expect(tools?.type === 'npc_market_cleared' && tools.payload.price).toBe(48);
   });
   it('moves the intercept by at most the configured noise', () => {
     const g = game({ demand_noise: 0.05 });
