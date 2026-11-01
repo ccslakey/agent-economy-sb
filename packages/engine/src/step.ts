@@ -3,6 +3,9 @@ import {
   type ActionError,
   type Company,
   type CompanyId,
+  type Contract,
+  type ContractId,
+  contractId,
   demandFor,
   type Event,
   type EventOf,
@@ -13,8 +16,12 @@ import {
   GOODS,
   type Good,
   type GroveId,
+  type Obligation,
+  type Party,
   PRODUCED_GOODS,
   producerOf,
+  ROLE_NAMES,
+  type Role,
   type RunConfig,
   type RunId,
   type RunState,
@@ -25,7 +32,14 @@ import {
 } from '@agent-economy/schema';
 import { apply } from './fold.ts';
 import type { Rng } from './rng.ts';
-import { capacityOf, demandFactor, scoreOf } from './world.ts';
+import {
+  capacityOf,
+  demandFactor,
+  escrowFeePerSide,
+  partyOf,
+  remainingValue,
+  scoreOf,
+} from './world.ts';
 
 // state + input + rng -> events. Pure, no IO. The caller appends the events and folds them.
 
@@ -77,6 +91,7 @@ export function step(state: RunState, input: StepInput, rng: Rng): Event[] {
     case 'resolve_round':
       if (s.phase.kind !== 'round')
         throw new Error(`cannot resolve a round in phase ${s.phase.kind}`);
+      resolveQueue(current, emit);
       emit({ type: 'round_resolved', payload: {}, actor: null });
       if (s.phase.kind === 'round') emit({ type: 'round_opened', payload: {}, actor: null });
       break;
@@ -119,12 +134,52 @@ function submit(
     return null;
   };
   const blocked = batchError();
+  const caps = {
+    post_message: s.config.limits.public_messages_per_round,
+    send_dm: s.config.limits.dms_per_round,
+  };
+  const sent = { post_message: 0, send_dm: 0 };
   actions.forEach((action, index) => {
-    const error = blocked ?? (c === undefined ? null : validate(s, c, action));
+    let error = blocked ?? (c === undefined ? null : validate(s, c, action));
+    if (error === null && (action.type === 'post_message' || action.type === 'send_dm')) {
+      sent[action.type] += 1;
+      if (sent[action.type] > caps[action.type]) {
+        error = {
+          code: 'MESSAGE_CAP_REACHED',
+          reason: `${caps[action.type]} ${action.type} per round`,
+        };
+      }
+    }
     if (error === null)
       emit({ type: 'action_submitted', payload: { index, action }, actor: company });
     else emit({ type: 'action_rejected', payload: { index, action, ...error }, actor: company });
   });
+}
+
+function counterpartyError(
+  state: RunState,
+  company: Company,
+  other: CompanyId,
+): ActionError | null {
+  if (other === company.id) return { code: 'INVALID_ACTION', reason: 'that is you' };
+  const target = state.companies[other];
+  if (target === undefined || target.standing.kind === 'bankrupt') {
+    return { code: 'INVALID_ACTION', reason: `no active company ${other}` };
+  }
+  return null;
+}
+
+function licenseError(company: Company, role: Role, price: number): ActionError | null {
+  if (company.roles.includes(role)) {
+    return { code: 'INVALID_ACTION', reason: `already licensed as ${role}` };
+  }
+  if (company.roles.length >= 2) {
+    return { code: 'INVALID_ACTION', reason: 'one extra license per company' };
+  }
+  if (company.cash < price) {
+    return { code: 'INSUFFICIENT_CASH', reason: `${company.id} has ${company.cash} cash` };
+  }
+  return null;
 }
 
 function orderError(
@@ -162,23 +217,313 @@ function validate(state: RunState, company: Company, action: Action): ActionErro
     case 'sell_npc':
     case 'scrap':
       return null;
-    case 'post_message':
-    case 'send_dm':
-    case 'propose_contract':
-    case 'accept_contract':
+    case 'propose_contract': {
+      const counterparty = state.companies[action.counterparty];
+      if (action.counterparty === company.id) {
+        return { code: 'INVALID_ACTION', reason: 'a contract needs two companies' };
+      }
+      if (counterparty === undefined || counterparty.standing.kind === 'bankrupt') {
+        return { code: 'INVALID_ACTION', reason: `no active company ${action.counterparty}` };
+      }
+      if (action.escrow && state.config.knobs.enforcement === 'none') {
+        return { code: 'INVALID_ACTION', reason: 'escrow is not available in this run' };
+      }
+      const past = action.obligations.find((o) => o.due_turn < state.turn);
+      if (past !== undefined) {
+        return { code: 'INVALID_ACTION', reason: `due turn ${past.due_turn} has passed` };
+      }
+      return null;
+    }
+    case 'accept_contract': {
+      const error = proposalError(state, company, action.contract, 'counterparty');
+      const contract = state.contracts[action.contract];
+      if (error !== null || contract === undefined) return error;
+      const fee = escrowFeePerSide(state, contract);
+      const proposer = state.companies[contract.proposer];
+      if (company.cash < fee) return { code: 'INSUFFICIENT_CASH', reason: `escrow fee is ${fee}` };
+      if (proposer === undefined || proposer.cash < fee) {
+        return { code: 'INSUFFICIENT_CASH', reason: `the proposer cannot cover the ${fee} fee` };
+      }
+      return null;
+    }
     case 'reject_contract':
+      return proposalError(state, company, action.contract, 'counterparty');
     case 'withdraw_contract':
+      return proposalError(state, company, action.contract, 'proposer');
     case 'deliver':
+      return fulfilmentError(
+        state,
+        company,
+        action.contract,
+        action.obligation,
+        'goods',
+        action.qty,
+      );
     case 'pay':
-    case 'transfer':
+      return fulfilmentError(
+        state,
+        company,
+        action.contract,
+        action.obligation,
+        'cash',
+        action.amount,
+      );
+    case 'post_message':
+      return null;
+    case 'send_dm':
+      return counterpartyError(state, company, action.to);
+    case 'transfer': {
+      const error = counterpartyError(state, company, action.to);
+      if (error !== null) return error;
+      if (action.what.kind === 'cash' && company.cash < action.what.amount) {
+        return { code: 'INSUFFICIENT_CASH', reason: `${company.id} has ${company.cash} cash` };
+      }
+      if (action.what.kind === 'goods') {
+        const held = company.inventory[action.what.good] ?? 0;
+        if (held < action.what.qty) {
+          return {
+            code: 'INSUFFICIENT_INVENTORY',
+            reason: `${company.id} holds ${held} ${action.what.good}`,
+          };
+        }
+      }
+      return null;
+    }
     case 'buy_license':
-    case 'bid_license':
+      return licenseError(company, action.role, state.config.economy.license_price);
+    case 'bid_license': {
+      const auction = state.auctions[action.role];
+      if (auction === undefined || auction.closes_turn !== state.turn) {
+        return { code: 'INVALID_ACTION', reason: `no ${action.role} license is up for auction` };
+      }
+      if (action.amount < auction.reserve) {
+        return { code: 'INVALID_ACTION', reason: `the reserve is ${auction.reserve}` };
+      }
+      return licenseError(company, action.role, action.amount);
+    }
     case 'rebrand':
-      return { code: 'INVALID_ACTION', reason: `${action.type} is not available in this build` };
+      if (state.config.knobs.rebranding === 'off') {
+        return { code: 'INVALID_ACTION', reason: 'rebranding is off in this run' };
+      }
+      if (company.cash < state.config.economy.rebrand_fee) {
+        return {
+          code: 'INSUFFICIENT_CASH',
+          reason: `the rebrand fee is ${state.config.economy.rebrand_fee}`,
+        };
+      }
+      return null;
     default: {
       const _exhaustive: never = action;
       return _exhaustive;
     }
+  }
+}
+
+function proposalError(
+  state: RunState,
+  company: Company,
+  id: ContractId,
+  mustBe: Party,
+): ActionError | null {
+  const contract = state.contracts[id];
+  if (contract === undefined) return { code: 'CONTRACT_NOT_FOUND', reason: `no contract ${id}` };
+  const side = partyOf(contract, company.id);
+  if (side === null)
+    return { code: 'NOT_A_PARTY', reason: `${company.id} is not a party to ${id}` };
+  if (side !== mustBe) return { code: 'NOT_A_PARTY', reason: `only the ${mustBe} can do that` };
+  if (contract.status.status !== 'proposed') {
+    return { code: 'CONTRACT_NOT_ACTIVE', reason: `${id} is ${contract.status.status}` };
+  }
+  return null;
+}
+
+function fulfilmentError(
+  state: RunState,
+  company: Company,
+  id: ContractId,
+  index: number,
+  kind: Obligation['kind'],
+  units: number,
+): ActionError | null {
+  const contract = state.contracts[id];
+  if (contract === undefined) return { code: 'CONTRACT_NOT_FOUND', reason: `no contract ${id}` };
+  const side = partyOf(contract, company.id);
+  if (side === null)
+    return { code: 'NOT_A_PARTY', reason: `${company.id} is not a party to ${id}` };
+  if (contract.status.status !== 'active' && contract.status.status !== 'defaulted') {
+    return { code: 'CONTRACT_NOT_ACTIVE', reason: `${id} is ${contract.status.status}` };
+  }
+  const obligation = contract.obligations[index];
+  if (obligation === undefined || obligation.kind !== kind) {
+    return { code: 'INVALID_ACTION', reason: `${id} has no ${kind} obligation ${index}` };
+  }
+  if (obligation.by !== side) {
+    return {
+      code: 'INVALID_ACTION',
+      reason: `obligation ${index} is owed by the ${obligation.by}`,
+    };
+  }
+  const remaining =
+    (obligation.kind === 'goods' ? obligation.qty : obligation.amount) - obligation.met;
+  if (units > remaining) {
+    return { code: 'INVALID_ACTION', reason: `only ${remaining} remaining on obligation ${index}` };
+  }
+  if (obligation.kind === 'goods' && (company.inventory[obligation.good] ?? 0) < units) {
+    return {
+      code: 'INSUFFICIENT_INVENTORY',
+      reason: `${company.id} holds ${company.inventory[obligation.good] ?? 0} ${obligation.good}`,
+    };
+  }
+  if (obligation.kind === 'cash' && company.cash < units) {
+    return { code: 'INSUFFICIENT_CASH', reason: `${company.id} has ${company.cash} cash` };
+  }
+  return null;
+}
+
+// Round resolution: every queued action re-validates against the state as earlier actions in
+// the same round left it, in company id then submission order, so a withdrawal and an
+// acceptance in one round cannot both succeed.
+
+function resolveQueue(current: () => RunState, emit: (body: Body) => void): void {
+  const queue = [...current().pending_actions].sort((a, b) =>
+    a.company < b.company ? -1 : a.company > b.company ? 1 : a.index - b.index,
+  );
+  for (const { company, index, action } of queue) {
+    const s = current();
+    const c = s.companies[company];
+    if (c === undefined) continue;
+    const error = validate(s, c, action);
+    if (error !== null) {
+      emit({ type: 'action_rejected', payload: { index, action, ...error }, actor: company });
+      continue;
+    }
+    resolveAction(current, emit, c, action);
+  }
+}
+
+function resolveAction(
+  current: () => RunState,
+  emit: (body: Body) => void,
+  company: Company,
+  action: Action,
+): void {
+  switch (action.type) {
+    case 'propose_contract': {
+      const { type: _, ...terms } = action;
+      emit({
+        type: 'contract_proposed',
+        payload: {
+          ...terms,
+          proposer: company.id,
+          contract: contractId(current().next_contract_no),
+        },
+        actor: company.id,
+      });
+      return;
+    }
+    case 'accept_contract': {
+      const contract = current().contracts[action.contract];
+      if (contract === undefined) return;
+      emit({
+        type: 'contract_accepted',
+        payload: {
+          contract: action.contract,
+          escrow_fee_per_side: escrowFeePerSide(current(), contract),
+        },
+        actor: company.id,
+      });
+      return;
+    }
+    case 'reject_contract':
+      emit({
+        type: 'contract_rejected',
+        payload: { contract: action.contract },
+        actor: company.id,
+      });
+      return;
+    case 'withdraw_contract':
+      emit({
+        type: 'contract_withdrawn',
+        payload: { contract: action.contract },
+        actor: company.id,
+      });
+      return;
+    case 'deliver':
+    case 'pay': {
+      const contract = current().contracts[action.contract];
+      const obligation = contract?.obligations[action.obligation];
+      if (contract === undefined || obligation === undefined) return;
+      const units = action.type === 'deliver' ? action.qty : action.amount;
+      if (contract.escrow && contract.status.status === 'active') {
+        emit({
+          type: 'escrow_deposited',
+          payload: { contract: action.contract, obligation: action.obligation, units },
+          actor: company.id,
+        });
+      } else if (obligation.kind === 'goods') {
+        emit({
+          type: 'delivery_made',
+          payload: {
+            contract: action.contract,
+            obligation: action.obligation,
+            good: obligation.good,
+            qty: units,
+          },
+          actor: company.id,
+        });
+      } else {
+        emit({
+          type: 'payment_made',
+          payload: { contract: action.contract, obligation: action.obligation, amount: units },
+          actor: company.id,
+        });
+      }
+      settle(current, emit, action.contract);
+      return;
+    }
+    case 'post_message':
+      emit({ type: 'message_posted', payload: { text: action.text }, actor: company.id });
+      return;
+    case 'send_dm':
+      emit({ type: 'dm_sent', payload: { to: action.to, text: action.text }, actor: company.id });
+      return;
+    case 'transfer':
+      emit({
+        type: 'transfer_made',
+        payload: { to: action.to, what: action.what },
+        actor: company.id,
+      });
+      return;
+    case 'extract':
+    case 'produce':
+    case 'sell_npc':
+    case 'scrap':
+    case 'buy_license':
+    case 'bid_license':
+    case 'rebrand':
+      return;
+    default: {
+      const _exhaustive: never = action;
+      return;
+    }
+  }
+}
+
+/** After a delivery or payment: close the contract if every obligation is now met. */
+function settle(current: () => RunState, emit: (body: Body) => void, id: ContractId): void {
+  const s = current();
+  const contract = s.contracts[id];
+  if (contract === undefined) return;
+  if (contract.obligations.some((o) => remainingValue(s, o) > 0)) return;
+  if (contract.status.status === 'active') {
+    if (contract.escrow) emit({ type: 'escrow_released', payload: { contract: id }, actor: null });
+    emit({ type: 'contract_completed', payload: { contract: id }, actor: null });
+  } else if (contract.status.status === 'defaulted') {
+    emit({
+      type: 'contract_cured',
+      payload: { contract: id, cured_value: contract.status.unmet_value },
+      actor: null,
+    });
   }
 }
 
@@ -200,10 +545,130 @@ function operations(current: () => RunState, emit: (body: Body) => void, rng: Rn
   market(current, emit, rng);
   scrap(current, emit);
   upkeep(current, emit);
+  companyChanges(current, emit, rng);
   regrow(current, emit);
   shocks(current, emit, rng);
+  contracts(current, emit);
   bankruptcy(current, emit);
   return endRoll(current, emit, rng);
+}
+
+/** License purchases, rebrands, and closing auctions, in company id order. */
+function companyChanges(current: () => RunState, emit: (body: Body) => void, rng: Rng): void {
+  for (const c of solvent(current())) {
+    const { buy_license, rebrand } = c.pending_orders;
+    const s = current();
+    const price = s.config.economy.license_price;
+    if (buy_license !== undefined && licenseError(c, buy_license, price) === null) {
+      emit({ type: 'license_bought', payload: { role: buy_license, price }, actor: c.id });
+    }
+    const after = current().companies[c.id];
+    const fee = s.config.economy.rebrand_fee;
+    if (rebrand !== undefined && after !== undefined && after.cash >= fee) {
+      emit({
+        type: 'company_rebranded',
+        payload: { old_name: c.name, new_name: rebrand, fee },
+        actor: c.id,
+      });
+    }
+  }
+  const s = current();
+  for (const role of ROLE_NAMES) {
+    const auction = s.auctions[role];
+    if (auction === undefined || auction.closes_turn !== s.turn) continue;
+    const bids: { company: Company; amount: number }[] = [];
+    for (const c of solvent(s)) {
+      const amount = c.pending_orders.bids[role];
+      if (amount === undefined || amount < auction.reserve) continue;
+      if (licenseError(c, role, amount) !== null) continue;
+      bids.push({ company: c, amount });
+    }
+    const top = Math.max(...bids.map((b) => b.amount));
+    const tied = bids.filter((b) => b.amount === top);
+    const winner = tied.length === 0 ? undefined : pick(rng, `auction_tie:${role}`, tied);
+    emit({
+      type: 'license_auctioned',
+      payload: {
+        role,
+        result:
+          winner === undefined
+            ? { kind: 'unsold' }
+            : { kind: 'sold', winner: winner.company.id, bid: winner.amount },
+      },
+      actor: null,
+    });
+  }
+}
+
+const byContractId = (a: Contract, b: Contract) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+/** Expire stale proposals, then fire defaults for obligations due this turn. Under `enforced`, the engine fulfils what it can first. */
+function contracts(current: () => RunState, emit: (body: Body) => void): void {
+  const turn = current().turn;
+  for (const contract of Object.values(current().contracts).sort(byContractId)) {
+    if (contract.status.status === 'proposed' && contract.status.turn < turn) {
+      emit({ type: 'contract_expired', payload: { contract: contract.id }, actor: null });
+    }
+  }
+  if (current().config.knobs.enforcement === 'enforced') enforce(current, emit);
+  for (const contract of Object.values(current().contracts).sort(byContractId)) {
+    if (contract.status.status !== 'active') continue;
+    const s = current();
+    const latest = Math.max(...contract.obligations.map((o) => o.due_turn));
+    if (contract.escrow && latest > turn) continue;
+    const due = contract.obligations.filter(
+      (o) => (contract.escrow || o.due_turn <= turn) && remainingValue(s, o) > 0,
+    );
+    const [first, ...rest] = due;
+    if (first === undefined) continue;
+    const by: [Party, ...Party[]] = [first.by];
+    for (const o of rest) if (!by.includes(o.by)) by.push(o.by);
+    if (contract.escrow) {
+      emit({ type: 'escrow_refunded', payload: { contract: contract.id }, actor: null });
+    }
+    emit({
+      type: 'contract_defaulted',
+      payload: {
+        contract: contract.id,
+        by,
+        unmet_value: due.reduce((sum, o) => sum + remainingValue(s, o), 0),
+      },
+      actor: null,
+    });
+  }
+}
+
+function enforce(current: () => RunState, emit: (body: Body) => void): void {
+  const turn = current().turn;
+  for (const contract of Object.values(current().contracts).sort(byContractId)) {
+    if (contract.status.status !== 'active' || contract.escrow) continue;
+    contract.obligations.forEach((o, index) => {
+      const s = current();
+      const remaining = remainingValue(s, o);
+      if (o.due_turn > turn || remaining <= 0) return;
+      const party = o.by === 'proposer' ? contract.proposer : contract.counterparty;
+      const payer = s.companies[party];
+      if (payer === undefined) return;
+      if (o.kind === 'goods') {
+        const units = o.qty - o.met;
+        if ((payer.inventory[o.good] ?? 0) < units) return;
+        emit({
+          type: 'delivery_made',
+          payload: { contract: contract.id, obligation: index, good: o.good, qty: units },
+          actor: party,
+        });
+      } else {
+        const amount = o.amount - o.met;
+        if (payer.cash < amount) return;
+        emit({
+          type: 'payment_made',
+          payload: { contract: contract.id, obligation: index, amount },
+          actor: party,
+        });
+      }
+      settle(current, emit, contract.id);
+    });
+  }
 }
 
 function regrow(current: () => RunState, emit: (body: Body) => void): void {
@@ -260,11 +725,38 @@ function bankruptcy(current: () => RunState, emit: (body: Body) => void): void {
   const s = current();
   for (const c of solvent(s)) {
     if (c.cash >= s.config.economy.overdraft_limit) continue;
+    const involved = Object.values(current().contracts)
+      .filter((k) => partyOf(k, c.id) !== null)
+      .sort(byContractId);
+    const active = involved.filter((k) => k.status.status === 'active');
     emit({
       type: 'company_bankrupt',
-      payload: { cash: c.cash, contracts_defaulted: [], inventory_scrapped: c.inventory },
+      payload: {
+        cash: c.cash,
+        contracts_defaulted: active.map((k) => k.id),
+        inventory_scrapped: c.inventory,
+      },
       actor: c.id,
     });
+    for (const k of involved) {
+      if (k.status.status === 'proposed') {
+        emit({ type: 'contract_expired', payload: { contract: k.id }, actor: null });
+      }
+    }
+    for (const k of active) {
+      const side = partyOf(k, c.id);
+      if (side === null) continue;
+      const owed = k.obligations.filter((o) => o.by === side);
+      emit({
+        type: 'contract_defaulted',
+        payload: {
+          contract: k.id,
+          by: [side],
+          unmet_value: owed.reduce((sum, o) => sum + remainingValue(current(), o), 0),
+        },
+        actor: null,
+      });
+    }
   }
 }
 
