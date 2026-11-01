@@ -1,5 +1,6 @@
-# M6's first two sweeps in one file: enforcement on against off, and the needs board on against
-# off, each paired by seed against the same baseline (the M4 penalty-regime config).
+# M6's first sweeps in one file, each paired by seed against the same baseline (the M4
+# penalty-regime config): enforcement on against off, the needs board on against off, and a
+# twelve-company roster with two sellers per role against the six-company one.
 #   ADMIN_TOKEN=... node apps/runner/src/sweep.ts --api http://localhost:3000 --sweep configs/sweeps/m6-knobs.yaml --concurrency 2
 experiment_id: m6-knobs
 seeds: [104, 105, 106]
@@ -56,3 +57,162 @@ variants:
   - { name: baseline }
   - { name: enforcement-off, knobs: { enforcement: "off" } }
   - { name: needs-board, knobs: { needs_board: "on" } }
+  - name: twelve
+    limits: { max_concurrent_sessions: 12 }
+    population:
+      - {
+          id: c01,
+          name: Ironreach,
+          role: miner,
+          driver:
+            {
+              kind: llm,
+              model: sonnet,
+              effort: medium,
+              harness_version: 1,
+              prompt_variant: neutral,
+            },
+        }
+      - {
+          id: c02,
+          name: Deepcut,
+          role: miner,
+          driver:
+            {
+              kind: llm,
+              model: sonnet,
+              effort: medium,
+              harness_version: 1,
+              prompt_variant: neutral,
+            },
+        }
+      - {
+          id: c03,
+          name: Fellwood,
+          role: logger,
+          driver:
+            {
+              kind: llm,
+              model: sonnet,
+              effort: medium,
+              harness_version: 1,
+              prompt_variant: neutral,
+            },
+        }
+      - {
+          id: c04,
+          name: Saltpine,
+          role: logger,
+          driver:
+            {
+              kind: llm,
+              model: sonnet,
+              effort: medium,
+              harness_version: 1,
+              prompt_variant: neutral,
+            },
+        }
+      - {
+          id: c05,
+          name: Emberworks,
+          role: smelter,
+          driver:
+            {
+              kind: llm,
+              model: sonnet,
+              effort: medium,
+              harness_version: 1,
+              prompt_variant: neutral,
+            },
+        }
+      - {
+          id: c06,
+          name: Kilnmark,
+          role: smelter,
+          driver:
+            {
+              kind: llm,
+              model: sonnet,
+              effort: medium,
+              harness_version: 1,
+              prompt_variant: neutral,
+            },
+        }
+      - {
+          id: c07,
+          name: Birchline Mills,
+          role: mill,
+          driver:
+            {
+              kind: llm,
+              model: sonnet,
+              effort: medium,
+              harness_version: 1,
+              prompt_variant: neutral,
+            },
+        }
+      - {
+          id: c08,
+          name: Sawyer and Sons,
+          role: mill,
+          driver:
+            {
+              kind: llm,
+              model: sonnet,
+              effort: medium,
+              harness_version: 1,
+              prompt_variant: neutral,
+            },
+        }
+      - {
+          id: c09,
+          name: Anvilgate,
+          role: toolmaker,
+          driver:
+            {
+              kind: llm,
+              model: sonnet,
+              effort: medium,
+              harness_version: 1,
+              prompt_variant: neutral,
+            },
+        }
+      - {
+          id: c10,
+          name: Quill Forge,
+          role: toolmaker,
+          driver:
+            {
+              kind: llm,
+              model: sonnet,
+              effort: medium,
+              harness_version: 1,
+              prompt_variant: neutral,
+            },
+        }
+      - {
+          id: c11,
+          name: Hearthstead,
+          role: furniture_maker,
+          driver:
+            {
+              kind: llm,
+              model: sonnet,
+              effort: medium,
+              harness_version: 1,
+              prompt_variant: neutral,
+            },
+        }
+      - {
+          id: c12,
+          name: Oakhollow,
+          role: furniture_maker,
+          driver:
+            {
+              kind: llm,
+              model: sonnet,
+              effort: medium,
+              harness_version: 1,
+              prompt_variant: neutral,
+            },
+        }

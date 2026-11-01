@@ -45,9 +45,20 @@ describe('metrics', () => {
       experiment_id: 'x',
       seeds: [1, 2],
       base: { population: config.population, knobs: { horizon: { kind: 'fixed', last_turn: 6 } } },
-      variants: [{ name: 'a' }, { name: 'b', knobs: { enforcement: 'off' } }],
+      variants: [
+        { name: 'a' },
+        {
+          name: 'b',
+          knobs: { enforcement: 'off' },
+          limits: { max_concurrent_sessions: 12 },
+          population: config.population.slice(0, 2),
+        },
+      ],
     });
     const runs = expandSweep(sweep);
+    expect(runs[3]?.config.population).toHaveLength(2);
+    expect(runs[3]?.config.limits.max_concurrent_sessions).toBe(12);
+    expect(runs[0]?.config.population).toHaveLength(12);
     expect(runs.map((r) => `${r.config.experiment_id}:${r.seed}`)).toEqual([
       'x/a:1',
       'x/a:2',

@@ -10,6 +10,9 @@ export const SweepVariant = z.object({
   name: z.string().min(1),
   knobs: Overrides,
   economy: Overrides,
+  limits: Overrides,
+  /** Replaces the base population outright, for a variant that changes who plays. */
+  population: z.array(PopulationEntry).min(1).optional(),
 });
 export type SweepVariant = z.infer<typeof SweepVariant>;
 
@@ -37,10 +40,10 @@ export function expandSweep(sweep: Sweep): SweepRun[] {
       config: RunConfig.parse({
         seed,
         experiment_id: `${sweep.experiment_id}/${variant.name}`,
-        population: sweep.base.population,
+        population: variant.population ?? sweep.base.population,
         economy: { ...sweep.base.economy, ...variant.economy },
         knobs: { ...sweep.base.knobs, ...variant.knobs },
-        limits: sweep.base.limits,
+        limits: { ...sweep.base.limits, ...variant.limits },
       }),
     })),
   );
