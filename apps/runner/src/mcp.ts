@@ -115,6 +115,32 @@ export function buildMcpServer(client: GameClient): McpServer {
   );
 
   server.registerTool(
+    'read_plan',
+    {
+      description:
+        'Your standing game plan: early, mid, and late game, what you are doing now, and your thoughts on how the game is going. Null before you write one.',
+      inputSchema: {},
+    },
+    () => asText(client.call('GET', '/v1/plan')),
+  );
+
+  server.registerTool(
+    'write_plan',
+    {
+      description:
+        'Write or revise your game plan. Give every field, each under 600 characters: early (your opening), mid (the middle game), late (the endgame), now (what you are doing this turn and why), thoughts (how you feel the game is going). Every revision is kept.',
+      inputSchema: {
+        early: z.string(),
+        mid: z.string(),
+        late: z.string(),
+        now: z.string(),
+        thoughts: z.string(),
+      },
+    },
+    (plan) => asText(client.call('PUT', '/v1/plan', plan)),
+  );
+
+  server.registerTool(
     'read_notes',
     {
       description: 'Your private notes from earlier rounds. Your only memory between rounds.',

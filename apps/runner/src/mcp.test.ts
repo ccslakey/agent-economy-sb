@@ -74,8 +74,10 @@ describe('mcp tools', () => {
       'observation',
       'past_actions',
       'read_notes',
+      'read_plan',
       'submit_actions',
       'write_notes',
+      'write_plan',
     ]);
   });
 

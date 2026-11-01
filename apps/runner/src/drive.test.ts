@@ -148,6 +148,10 @@ describe('drive', () => {
     const { result, events, traces } = await start(fakeAgent);
     expect(result.turns).toBe(2);
     expect(result.replaced).toEqual([]);
+    expect(result.report).toMatchObject({
+      turn: 2,
+      companies: [{ id: 'c01', sessions: 7 }, { id: 'c05' }, { id: 'c09', sessions: 0 }],
+    });
     expect(result.sessions).toBe(2 * 2 * 3 + 2);
     expect(traces.filter((t) => t.kind === 'round')).toHaveLength(12);
     expect(traces.filter((t) => t.kind === 'farming')).toHaveLength(2);
