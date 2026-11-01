@@ -87,6 +87,11 @@ export function producerOf(good: Good): Role {
   return role;
 }
 
+/** Inputs per unit of `good`. Empty for extracted goods. */
+export function recipeOf(good: Good): Readonly<Partial<Record<Good, number>>> {
+  return ROLES[producerOf(good)].inputs;
+}
+
 // Domain primitives shared by config, state, actions, and events.
 
 /** 0 is the pre-game turn `run_started` lands on; play starts at 1. */
@@ -125,9 +130,10 @@ export const Shock = z.discriminatedUnion('kind', [
 export type Shock = z.infer<typeof Shock>;
 
 /** `factor` scales the shocked quantity (an intercept or a capacity); 0 turns means instant. */
-export const SHOCK_RULES: Record<Shock['kind'], { duration_turns: number; factor: number }> = {
+export const SHOCK_RULES = {
   grove_fire: { duration_turns: 0, factor: 0 },
   demand_surge: { duration_turns: 3, factor: 1.25 },
   demand_slump: { duration_turns: 3, factor: 0.75 },
   miners_strike: { duration_turns: 2, factor: 0.5 },
-};
+} as const satisfies Record<Shock['kind'], { duration_turns: number; factor: number }>;
+export const SHOCK_KINDS = keysOf(SHOCK_RULES);

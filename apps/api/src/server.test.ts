@@ -1,0 +1,378 @@
+import path from 'node:path';
+import type { FastifyInstance } from 'fastify';
+import { afterEach, describe, expect, it } from 'vitest';
+import { buildServer } from './server.ts';
+import { MemoryStore } from './store.ts';
+
+// Drives the API the way the runner will: admin creates a run, agents act with bearer tokens.
+
+const docsDir = path.resolve(import.meta.dirname, '../../../docs/agent');
+const bot = { kind: 'bot', strategy: 'honest_trader' };
+const config = {
+  seed: 3,
+  experiment_id: 'api-test',
+  population: [
+    { id: 'c01', name: 'Ironreach', role: 'miner', driver: bot },
+    { id: 'c05', name: 'Emberworks', role: 'smelter', driver: bot },
+  ],
+  economy: {
+    demand_noise: 0,
+    starting_inventory: {
+      miner: { ore: 12 },
+      logger: {},
+      smelter: { ore: 12 },
+      mill: {},
+      toolmaker: {},
+      furniture_maker: {},
+    },
+  },
+  knobs: { horizon: { kind: 'fixed', last_turn: 2 } },
+  limits: { round_tool_calls: 8, round_wall_clock_seconds: 3600 },
+};
+
+/** A clock the test controls: timers never fire on their own. */
+const frozenClock = () => {
+  const timers = new Map<number, () => void>();
+  let next = 1;
+  return {
+    setTimeout: (fn: () => void) => {
+      const id = next++;
+      timers.set(id, fn);
+      return id;
+    },
+    clearTimeout: (handle: unknown) => {
+      timers.delete(handle as number);
+    },
+    fire: () => {
+      for (const [id, fn] of [...timers]) {
+        timers.delete(id);
+        fn();
+      }
+    },
+  };
+};
+
+let app: FastifyInstance | null = null;
+const api = (): FastifyInstance => {
+  if (app === null) throw new Error('no server running');
+  return app;
+};
+afterEach(async () => {
+  await app?.close();
+  app = null;
+});
+
+async function startRun(store = new MemoryStore(), clock = frozenClock()) {
+  app = await buildServer({ store, adminToken: 'admin', docsDir, clock });
+  const created = await app.inject({
+    method: 'POST',
+    url: '/admin/runs',
+    headers: { 'x-admin-token': 'admin' },
+    payload: config,
+  });
+  expect(created.statusCode).toBe(201);
+  const { run_id, tokens } = created.json() as { run_id: string; tokens: Record<string, string> };
+  const as = (company: string) => ({ authorization: `Bearer ${tokens[company] ?? ''}` });
+  const advance = () =>
+    api().inject({
+      method: 'POST',
+      url: `/admin/runs/${run_id}/advance`,
+      headers: { 'x-admin-token': 'admin' },
+    });
+  return { run_id, tokens, as, advance, store, clock };
+}
+
+describe('agent routes', () => {
+  it('refuses a bad token and serves the observation for a good one', async () => {
+    const run = await startRun();
+    const anon = await api().inject({ method: 'GET', url: '/v1/observation' });
+    expect(anon.statusCode).toBe(401);
+    const seen = await api().inject({
+      method: 'GET',
+      url: '/v1/observation',
+      headers: run.as('c01'),
+    });
+    expect(seen.statusCode).toBe(200);
+    expect(seen.json()).toMatchObject({
+      turn: 1,
+      round: 1,
+      you: { id: 'c01', roles: ['miner'], cash: 600, capacity: { ore: 12 } },
+      round_budget: { tool_calls_left: 7 },
+    });
+  });
+
+  it('submits a batch once per round and reports per-action results in order', async () => {
+    const run = await startRun();
+    const submitted = await api().inject({
+      method: 'POST',
+      url: '/v1/actions',
+      headers: run.as('c01'),
+      payload: {
+        actions: [
+          { type: 'extract', from: { kind: 'ore_pit' }, qty: 12 },
+          { type: 'produce', good: 'ingot', qty: 1 },
+          { type: 'scrap', good: 'ore', qty: 'many' },
+        ],
+      },
+    });
+    expect(submitted.json()).toEqual({
+      results: [
+        { ok: true },
+        { ok: false, code: 'NOT_LICENSED', reason: 'ingot needs the smelter license' },
+        { ok: false, code: 'INVALID_ACTION', reason: expect.stringContaining('qty') },
+      ],
+    });
+    const again = await api().inject({
+      method: 'POST',
+      url: '/v1/actions',
+      headers: run.as('c01'),
+      payload: { actions: [{ type: 'scrap', good: 'ore', qty: 1 }] },
+    });
+    expect(again.json()).toEqual({
+      results: [{ ok: false, code: 'BATCH_ALREADY_SUBMITTED', reason: 'one batch per round' }],
+    });
+    const history = await api().inject({
+      method: 'GET',
+      url: '/v1/actions?turn=1',
+      headers: run.as('c01'),
+    });
+    expect((history.json() as { actions: unknown[] }).actions).toHaveLength(3);
+  });
+
+  it('spends the tool-call budget and closes the round when it is gone', async () => {
+    const run = await startRun();
+    for (let i = 0; i < 8; i++) {
+      const r = await api().inject({ method: 'GET', url: '/v1/market', headers: run.as('c01') });
+      expect(r.statusCode).toBe(200);
+    }
+    const ninth = await api().inject({
+      method: 'GET',
+      url: '/v1/observation',
+      headers: run.as('c01'),
+    });
+    expect(ninth.statusCode).toBe(409);
+    expect(ninth.json()).toMatchObject({ code: 'ROUND_CLOSED' });
+  });
+
+  it('advances on its own once every company has submitted, and on the wall clock', async () => {
+    const run = await startRun();
+    await api().inject({
+      method: 'POST',
+      url: '/v1/actions',
+      headers: run.as('c01'),
+      payload: { actions: [] },
+    });
+    let seen = await api().inject({
+      method: 'GET',
+      url: '/v1/observation',
+      headers: run.as('c05'),
+    });
+    expect(seen.json()).toMatchObject({ round: 1 });
+    await api().inject({
+      method: 'POST',
+      url: '/v1/actions',
+      headers: run.as('c05'),
+      payload: { actions: [] },
+    });
+    seen = await api().inject({ method: 'GET', url: '/v1/observation', headers: run.as('c05') });
+    expect(seen.json()).toMatchObject({ round: 2, round_budget: { tool_calls_left: 7 } });
+    run.clock.fire();
+    await new Promise((r) => setImmediate(r));
+    seen = await api().inject({ method: 'GET', url: '/v1/observation', headers: run.as('c05') });
+    expect(seen.json()).toMatchObject({ round: 3 });
+  });
+
+  it('runs the operations step after round three and ends on the fixed last turn', async () => {
+    const run = await startRun();
+    await api().inject({
+      method: 'POST',
+      url: '/v1/actions',
+      headers: run.as('c05'),
+      payload: { actions: [{ type: 'produce', good: 'ingot', qty: 6 }] },
+    });
+    await run.advance();
+    await run.advance();
+    const third = await run.advance();
+    expect(third.json()).toMatchObject({ turn: 2, phase: { kind: 'round', round: 1 } });
+    const seen = await api().inject({
+      method: 'GET',
+      url: '/v1/observation',
+      headers: run.as('c05'),
+    });
+    expect(seen.json()).toMatchObject({
+      turn: 2,
+      you: { inventory: { ingot: 6 }, cash: 600 - 40 - 6 },
+    });
+    const market = await api().inject({ method: 'GET', url: '/v1/market', headers: run.as('c05') });
+    expect(market.json()).toEqual({
+      clears: [
+        { turn: 1, good: 'tool', qty: 0, price: 240 },
+        { turn: 1, good: 'furniture', qty: 0, price: 640 },
+      ],
+    });
+    for (let i = 0; i < 3; i++) await run.advance();
+    const list = await api().inject({
+      method: 'GET',
+      url: '/admin/runs',
+      headers: { 'x-admin-token': 'admin' },
+    });
+    expect((list.json() as { runs: { status: string; phase: unknown }[] }).runs[0]).toMatchObject({
+      status: 'ended',
+      phase: { kind: 'ended' },
+    });
+    const closed = await api().inject({
+      method: 'GET',
+      url: '/v1/observation',
+      headers: run.as('c05'),
+    });
+    expect(closed.statusCode).toBe(409);
+  });
+
+  it('delivers contracts and messages at round end and lists them', async () => {
+    const run = await startRun();
+    await api().inject({
+      method: 'POST',
+      url: '/v1/actions',
+      headers: run.as('c01'),
+      payload: {
+        actions: [
+          { type: 'post_message', text: 'ore for sale' },
+          { type: 'send_dm', to: 'c05', text: '4 for 60?' },
+          {
+            type: 'propose_contract',
+            counterparty: 'c05',
+            escrow: false,
+            terms_text: '',
+            obligations: [{ kind: 'goods', by: 'proposer', good: 'ore', qty: 4, due_turn: 2 }],
+          },
+        ],
+      },
+    });
+    await run.advance();
+    const seen = await api().inject({
+      method: 'GET',
+      url: '/v1/observation',
+      headers: run.as('c05'),
+    });
+    expect(seen.json()).toMatchObject({
+      round: 2,
+      contracts: { proposed_to_you: ['k1'], changed_since_last_round: ['k1'] },
+      messages: {
+        public: [{ from: 'c01', text: 'ore for sale' }],
+        dms: [{ from: 'c01', channel: { kind: 'dm', to: 'c05' }, text: '4 for 60?' }],
+      },
+    });
+    const contracts = await api().inject({
+      method: 'GET',
+      url: '/v1/contracts?status=proposed',
+      headers: run.as('c05'),
+    });
+    expect(
+      (contracts.json() as { contracts: { id: string }[] }).contracts.map((k) => k.id),
+    ).toEqual(['k1']);
+    const messages = await api().inject({
+      method: 'GET',
+      url: '/v1/messages?turn=1',
+      headers: run.as('c05'),
+    });
+    expect((messages.json() as { messages: unknown[] }).messages).toHaveLength(2);
+  });
+
+  it('serves docs, caps notes, and records bug reports', async () => {
+    const run = await startRun();
+    const docs = await api().inject({ method: 'GET', url: '/v1/docs', headers: run.as('c01') });
+    expect(docs.json()).toEqual({ files: ['api.md', 'contracts.md', 'recipes.md', 'rules.md'] });
+    const rules = await api().inject({
+      method: 'GET',
+      url: '/v1/docs/rules.md',
+      headers: run.as('c01'),
+    });
+    expect(rules.headers['content-type']).toContain('text/markdown');
+    expect(rules.body).toContain('# Rules');
+    const missing = await api().inject({
+      method: 'GET',
+      url: '/v1/docs/..%2F..%2Fpackage.json',
+      headers: run.as('c01'),
+    });
+    expect(missing.statusCode).toBe(404);
+
+    const tooLong = await api().inject({
+      method: 'PUT',
+      url: '/v1/notes',
+      headers: run.as('c01'),
+      payload: { text: 'x'.repeat(4001) },
+    });
+    expect(tooLong.json()).toMatchObject({ code: 'NOTES_TOO_LONG' });
+    await api().inject({
+      method: 'PUT',
+      url: '/v1/notes',
+      headers: run.as('c01'),
+      payload: { text: 'trust c05' },
+    });
+    const notes = await api().inject({ method: 'GET', url: '/v1/notes', headers: run.as('c01') });
+    expect(notes.json()).toEqual({ text: 'trust c05' });
+
+    await api().inject({
+      method: 'POST',
+      url: '/v1/bug_report',
+      headers: run.as('c01'),
+      payload: { text: 'deliver confused me' },
+    });
+    const events = await api().inject({
+      method: 'GET',
+      url: `/admin/runs/${run.run_id}/events?after=1`,
+      headers: { 'x-admin-token': 'admin' },
+    });
+    const types = (events.json() as { events: { type: string }[] }).events.map((e) => e.type);
+    expect(types).toEqual(['bug_report_filed']);
+  });
+
+  it('pauses the clock and resumes, and reloads live runs from the store on restart', async () => {
+    const store = new MemoryStore();
+    const run = await startRun(store);
+    await api().inject({
+      method: 'POST',
+      url: `/admin/runs/${run.run_id}/pause`,
+      headers: { 'x-admin-token': 'admin' },
+      payload: { reason: 'rate_limit' },
+    });
+    const paused = await api().inject({
+      method: 'GET',
+      url: '/v1/observation',
+      headers: run.as('c01'),
+    });
+    expect(paused.json()).toMatchObject({ code: 'ROUND_CLOSED' });
+    await api().inject({
+      method: 'POST',
+      url: `/admin/runs/${run.run_id}/resume`,
+      headers: { 'x-admin-token': 'admin' },
+    });
+    await api().inject({
+      method: 'POST',
+      url: '/v1/actions',
+      headers: run.as('c01'),
+      payload: { actions: [{ type: 'scrap', good: 'ore', qty: 2 }] },
+    });
+
+    await app?.close();
+    app = await buildServer({ store, adminToken: 'admin', docsDir, clock: frozenClock() });
+    const seen = await app.inject({
+      method: 'GET',
+      url: '/v1/observation',
+      headers: run.as('c01'),
+    });
+    expect(seen.json()).toMatchObject({
+      turn: 1,
+      round: 1,
+      you: { pending_orders: { scrap: { ore: 2 } } },
+    });
+    const events = await store.events(run.run_id as never);
+    expect(events.map((e) => e.type)).toEqual([
+      'run_started',
+      'round_opened',
+      'run_paused',
+      'run_resumed',
+      'action_submitted',
+    ]);
+  });
+});

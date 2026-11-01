@@ -167,7 +167,7 @@ A run is fully described by one config file plus a seed. All engine randomness (
 - `population`: one entry per company with name, role, model, effort, harness version, and prompt variant. Names come from a pool unrelated to the model, so a name never hints at the model.
 - `economy`: every parameter in the Economy parameters table
 - `knobs`: the experiment variables below
-- `limits`: round tool-call budget, wall-clock backstop, notes size cap (default 4,000 characters), and max concurrent sessions
+- `limits`: round tool-call budget, wall-clock backstop, notes size cap (default 4,000 characters), message caps per round, and max concurrent sessions
 
 **Experiment knobs**
 
@@ -288,7 +288,7 @@ Projections are rebuildable from `events` at any time and exist only to make the
 
 - Lifecycle: `run_started`, `round_opened`, `round_resolved`, `turn_closed`, `run_paused`, `run_resumed`, `run_ended`
 - Actions: `action_submitted`, `action_rejected` (with error code)
-- Contracts: `contract_proposed`, `contract_accepted`, `contract_rejected`, `contract_withdrawn`, `contract_expired`, `delivery_made`, `payment_made`, `escrow_deposited`, `escrow_released`, `escrow_refunded`, `contract_completed`, `contract_defaulted`, `contract_cured`
+- Contracts: `contract_proposed`, `contract_accepted`, `contract_rejected`, `contract_withdrawn`, `contract_expired`, `delivery_made`, `payment_made`, `escrow_deposited`, `escrow_released`, `escrow_refunded`, `contract_completed`, `contract_defaulted`, `contract_cured`, `transfer_made`
 - Talk: `message_posted`, `dm_sent`
 - Operations: `extraction_completed`, `production_completed`, `npc_market_cleared`, `scrap_sold`, `upkeep_charged`, `storage_charged`
 - World: `grove_regrew`, `shock_applied`, `company_bankrupt`, `license_bought`, `license_auctioned`, `company_rebranded`

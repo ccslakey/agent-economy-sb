@@ -3,6 +3,7 @@
 
 export * from './actions.ts';
 export * from './config.ts';
+export * from './contracts.ts';
 export * from './events.ts';
 export * from './ids.ts';
 export * from './observation.ts';

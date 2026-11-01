@@ -76,6 +76,8 @@ export const Limits = z.object({
   round_tool_calls: z.number().int().positive().default(8),
   round_wall_clock_seconds: z.number().int().positive().default(300),
   notes_max_chars: z.number().int().positive().default(4000),
+  public_messages_per_round: z.number().int().nonnegative().default(3),
+  dms_per_round: z.number().int().nonnegative().default(5),
   max_concurrent_sessions: z.number().int().positive().default(12),
 });
 export type Limits = z.infer<typeof Limits>;
