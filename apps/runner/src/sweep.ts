@@ -33,21 +33,31 @@ const admin = async <T>(route: string): Promise<T> => {
   if (!response.ok) throw new Error(`GET ${route}: ${response.status} ${await response.text()}`);
   return (await response.json()) as T;
 };
-const endedRuns = async (experiment: string): Promise<Listing[]> =>
-  (await admin<{ runs: Listing[] }>('/admin/runs')).runs.filter(
+/** Ended runs of the experiment that no bot had to finish. A run with a handoff is replayed, not compared. */
+async function cleanRuns(experiment: string): Promise<(ComparedRun & { id: string })[]> {
+  const listed = (await admin<{ runs: Listing[] }>('/admin/runs')).runs.filter(
     (r) => r.status === 'ended' && r.experiment_id.startsWith(`${experiment}/`),
   );
-
-async function compare(experiment: string): Promise<void> {
-  const runs = await endedRuns(experiment);
-  const compared: ComparedRun[] = await Promise.all(
-    runs.map(async (r) => ({
+  const withMetrics = await Promise.all(
+    listed.map(async (r) => ({
+      id: r.id,
       variant: r.experiment_id.slice(experiment.length + 1),
       seed: r.seed,
       metrics: await admin<RunMetrics>(`/admin/runs/${r.id}/metrics`),
     })),
   );
-  process.stdout.write(`${compareRuns(compared)}\n`);
+  return withMetrics.filter(
+    (r) =>
+      r.metrics.bot_handoffs === 0 ||
+      (log(
+        `ignoring ${r.variant} seed ${r.seed} (${r.id}): ${r.metrics.bot_handoffs} bot handoffs`,
+      ),
+      false),
+  );
+}
+
+async function compare(experiment: string): Promise<void> {
+  process.stdout.write(`${compareRuns(await cleanRuns(experiment))}\n`);
 }
 
 const compareOnly = args.get('compare');
@@ -63,10 +73,10 @@ if (compareOnly !== undefined) {
     path.resolve(import.meta.dirname, `../../../docs/prompts/${variant}.md`),
     'utf8',
   );
-  const done = await endedRuns(sweep.experiment_id);
+  const done = await cleanRuns(sweep.experiment_id);
   const queue: SweepRun[] = expandSweep(sweep).filter(
     (r) =>
-      !done.some((d) => d.experiment_id === r.config.experiment_id && d.seed === r.seed) ||
+      !done.some((d) => d.variant === r.variant && d.seed === r.seed) ||
       (log(`skipping ${r.config.experiment_id} seed ${r.seed}, already ended`), false),
   );
   log(`${queue.length} runs to play, ${concurrency} at a time`);

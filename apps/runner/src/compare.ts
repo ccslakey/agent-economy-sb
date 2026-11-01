@@ -38,11 +38,12 @@ export function compareRuns(runs: ComparedRun[]): string {
   if (baseline === undefined) return 'no runs';
   const byVariant = (v: string) => runs.filter((r) => r.variant === v);
   const keys = Object.keys(flatten(runs[0]?.metrics as RunMetrics));
-  const header = [
-    'metric'.padEnd(18),
-    ...variants.map((v) => `${v} (n=${byVariant(v).length})`.padStart(22)),
-    ...variants.slice(1).map((v) => `Δ ${v} − ${baseline}`.padStart(24)),
+  const labels = [
+    ...variants.map((v) => `${v} (n=${byVariant(v).length})`),
+    ...variants.slice(1).map((v) => `Δ ${v} − ${baseline}`),
   ];
+  const width = Math.max(14, ...labels.map((l) => l.length)) + 2;
+  const header = ['metric'.padEnd(18), ...labels.map((l) => l.padStart(width))];
   const lines = [header.join('')];
   for (const key of keys) {
     const cells = [key.padEnd(18)];
@@ -51,7 +52,7 @@ export function compareRuns(runs: ComparedRun[]): string {
         const x = flatten(r.metrics)[key];
         return x === null || x === undefined ? [] : [x];
       });
-      cells.push(show(mean(values)).padStart(22));
+      cells.push(show(mean(values)).padStart(width));
     }
     for (const v of variants.slice(1)) {
       const diffs = byVariant(v).flatMap((r) => {
@@ -60,7 +61,7 @@ export function compareRuns(runs: ComparedRun[]): string {
         const b = pair === undefined ? null : flatten(pair.metrics)[key];
         return a === null || a === undefined || b === null || b === undefined ? [] : [a - b];
       });
-      cells.push(show(mean(diffs)).padStart(24));
+      cells.push(show(mean(diffs)).padStart(width));
     }
     lines.push(cells.join(''));
   }
