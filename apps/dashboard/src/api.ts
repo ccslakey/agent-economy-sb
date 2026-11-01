@@ -43,5 +43,16 @@ export const fetchEvents = async (token: string, runId: string): Promise<Event[]
   return events.map((e) => Event.parse(e));
 };
 
+export type PlanVersion = {
+  turn: number;
+  round: number | null;
+  plan: { early: string; mid: string; late: string; now: string; thoughts: string };
+};
+
+export const fetchPlans = (token: string, runId: string, company: string) =>
+  admin<{ plans: PlanVersion[] }>(token, `/admin/runs/${runId}/plans/${company}`).then(
+    (r) => r.plans,
+  );
+
 export const fetchNotes = (token: string, runId: string, company: string) =>
   admin<{ text: string }>(token, `/admin/runs/${runId}/notes/${company}`).then((r) => r.text);
