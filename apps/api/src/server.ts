@@ -107,6 +107,12 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
       return reply.code(400).send({ code: 'INVALID_ACTION', reason: 'pass turn and round' });
     }
     const { game, company } = request.agent;
+    if (game.state.config.knobs.context_persistence !== 'persistent') {
+      return reply.code(409).send({
+        code: 'ROUND_CLOSED',
+        reason: 'this run starts a fresh session each round; there is nothing to wait for',
+      });
+    }
     const { turn, round, timeout_ms } = query.data;
     return game.waitForRound(company.id, { turn, round }, timeout_ms);
   });

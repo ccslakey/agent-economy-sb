@@ -146,7 +146,13 @@ export async function drive(options: DriveOptions): Promise<DriveResult> {
         game: {
           command: 'node',
           args: [path.resolve(import.meta.dirname, 'mcp.ts')],
-          env: { AGENT_ECONOMY_URL: options.api, AGENT_ECONOMY_TOKEN: tokens[company] ?? '' },
+          env: {
+            AGENT_ECONOMY_URL: options.api,
+            AGENT_ECONOMY_TOKEN: tokens[company] ?? '',
+            ...(first.config.knobs.context_persistence === 'persistent'
+              ? { AGENT_ECONOMY_PERSISTENT: '1' }
+              : {}),
+          },
         },
       },
     };

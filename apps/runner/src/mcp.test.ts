@@ -76,7 +76,6 @@ describe('mcp tools', () => {
       'read_notes',
       'read_plan',
       'submit_actions',
-      'wait_for_round',
       'write_notes',
       'write_plan',
     ]);
