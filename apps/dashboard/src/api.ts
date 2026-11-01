@@ -75,3 +75,17 @@ export type Cost = {
 
 export const fetchCost = (token: string, runId: string) =>
   admin<Cost>(token, `/admin/runs/${runId}/cost`);
+
+/** Download the raw event log as JSON. A plain link cannot carry the admin header. */
+export async function exportEvents(token: string, runId: string): Promise<void> {
+  const response = await fetch(`/admin/runs/${runId}/events`, {
+    headers: { 'x-admin-token': token },
+  });
+  if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
+  const url = URL.createObjectURL(await response.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${runId}-events.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}

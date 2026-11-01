@@ -73,19 +73,19 @@ export function LineChart({
       .filter((d) => d !== null)
       .join(' ');
   return (
-    <figure style={{ margin: '0 0 16px' }}>
-      <figcaption style={{ fontSize: 13, fontWeight: 'bold' }}>{title}</figcaption>
-      <svg width={width} height={height} role="img" aria-label={title}>
+    <figure className="chart">
+      <figcaption>{title}</figcaption>
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={title}>
         {yTicks.map((t) => (
           <g key={t}>
-            <line x1={pad.left} x2={width - pad.right} y1={sy(t)} y2={sy(t)} stroke="#eee" />
-            <text x={pad.left - 6} y={sy(t) + 4} fontSize={11} textAnchor="end" fill="#555">
+            <line x1={pad.left} x2={width - pad.right} y1={sy(t)} y2={sy(t)} stroke="#E8ECF1" />
+            <text x={pad.left - 6} y={sy(t) + 4} className="tick" textAnchor="end">
               {t}
             </text>
           </g>
         ))}
         {x.map((t) => (
-          <text key={t} x={sx(t)} y={height - 6} fontSize={11} textAnchor="middle" fill="#555">
+          <text key={t} x={sx(t)} y={height - 6} className="tick" textAnchor="middle">
             {t}
           </text>
         ))}
@@ -95,8 +95,8 @@ export function LineChart({
             x2={sx(marker)}
             y1={pad.top}
             y2={height - pad.bottom}
-            stroke="#999"
-            strokeDasharray="3 3"
+            stroke="#C2410C"
+            strokeDasharray="3 4"
           />
         )}
         {series.map((s, i) => (
@@ -113,7 +113,7 @@ export function LineChart({
           </g>
         ))}
       </svg>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 12px', fontSize: 12 }}>
+      <div className="legend">
         {series.map((s, i) => (
           <span key={s.label} style={{ color: PALETTE[i % PALETTE.length] }}>
             ■ {s.label}
