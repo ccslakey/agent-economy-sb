@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { fetchNotes, fetchPlans, type PlanVersion } from '../api.ts';
 import { companyRows, describe, type Log, snapshots, timeline } from '../derive.ts';
 import { LineChart } from './Chart.tsx';
+import { Trace } from './Trace.tsx';
 import { Chip, fmt, standingChip } from './ui.tsx';
 
 const PLAN_FIELDS = ['early', 'mid', 'late', 'now', 'thoughts'] as const;
@@ -185,6 +186,10 @@ export function Company({
               <h2>notes.md</h2>
               <pre className="pre">{notes || '(none)'}</pre>
             </section>
+          </div>
+
+          <div className="row">
+            <Trace token={token} runId={runId} company={id} turn={turn} />
           </div>
 
           <section className="card">

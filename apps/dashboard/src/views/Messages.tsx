@@ -7,15 +7,18 @@ export function Messages({
   state,
   turn,
   turns,
+  participant: initial = '',
 }: {
   state: RunState;
   turn: number;
   /** Every closed turn, so quiet turns still get a zero. */
   turns: number[];
+  /** Pre-filters to one company; remount with a key to change it. */
+  participant?: string;
 }) {
   const [onlyTurn, setOnlyTurn] = useState(false);
   const volume = useMemo(() => messageRows(state, turns), [state, turns]);
-  const [participant, setParticipant] = useState('');
+  const [participant, setParticipant] = useState(initial);
   // Messages carry no id, so their position in the log is their identity.
   const rows = state.messages
     .map((m, position) => ({ m, position }))

@@ -93,3 +93,23 @@ export async function exportEvents(token: string, runId: string): Promise<void> 
 
 export const fetchMetrics = (token: string, runId: string) =>
   admin<RunMetrics>(token, `/admin/runs/${runId}/metrics`);
+
+/** One headless session. `result` is the CLI's JSON; its `result` string is the agent's own summary of the round. */
+export type Trace = {
+  id: string;
+  company: string;
+  turn: number;
+  round: number | null;
+  kind: 'round' | 'farming';
+  model: string | null;
+  result: { result?: string; usage?: { output_tokens_details?: { thinking_tokens?: number } } };
+  tokens_in: number;
+  tokens_out: number;
+  cost_usd: number;
+  duration_ms: number;
+};
+
+export const fetchTraces = (token: string, runId: string, company: string) =>
+  admin<{ traces: Trace[] }>(token, `/admin/runs/${runId}/traces?company=${company}`).then(
+    (r) => r.traces,
+  );

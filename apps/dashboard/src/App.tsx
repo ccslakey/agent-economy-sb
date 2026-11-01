@@ -236,7 +236,13 @@ export function App() {
               selected={company}
               onSelect={setCompany}
             />
-            <Messages state={state} turn={turn} turns={turns} />
+            <Messages
+              key={company ?? ''}
+              state={state}
+              turn={turn}
+              turns={turns}
+              participant={company ?? ''}
+            />
           </>
         )}
       </main>
