@@ -12,14 +12,13 @@ export function newsFrom(events: readonly Event[]): RoundNews {
       case 'contract_rejected':
       case 'contract_withdrawn':
       case 'contract_expired':
-      case 'delivery_made':
-      case 'payment_made':
       case 'escrow_deposited':
       case 'escrow_released':
       case 'escrow_refunded':
+      case 'escrow_forfeited':
+      case 'penalty_charged':
       case 'contract_completed':
       case 'contract_defaulted':
-      case 'contract_cured':
         contracts.add(e.payload.contract);
         break;
       default:
