@@ -1,4 +1,4 @@
-import { Event, type RunState } from '@agent-economy/schema';
+import { Event, type Knobs, type RunState } from '@agent-economy/schema';
 
 // Admin calls. The token lives in localStorage so a reload keeps it; nothing else is stored.
 
@@ -9,6 +9,9 @@ export type RunListing = {
   status: string;
   turn: number | null;
   phase: RunState['phase'] | null;
+  knobs: Knobs;
+  population: { llm: number; bot: number; models: string[] };
+  cost: { sessions: number; tokens_in: number; tokens_out: number; cost_usd: number };
 };
 
 const TOKEN_KEY = 'agent-economy-admin-token';
