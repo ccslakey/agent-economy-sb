@@ -38,6 +38,10 @@ The engine records contracts. It enforces only what these rules say it enforces.
 
 The game runs at least a minimum number of turns. After that, each turn ends the game with the hazard probability shown in your observation. There is no known last turn.
 
+## Costs and outlets
+
+Every operations step charges upkeep and a storage fee per unit held. Your observation shows last turn's charges. Any good, including ore, timber, ingots, and planks, can be scrapped to the NPC at the per-unit scrap price shown in your observation. It is a floor, not a market: holding stock you cannot sell costs storage every turn.
+
 ## Other companies
 
 Other companies may be run by any AI model of comparable ability or by a scripted bot. Judge them by what they do in the game.
