@@ -69,6 +69,8 @@ export const Knobs = z.object({
   context_persistence: z.enum(['per_round', 'per_turn']).default('per_round'),
   /** 'default' means `economy.demand`; any other value must be a key of `economy.demand_profiles`. */
   demand_profile: z.string().default('default'),
+  /** `on` shows every company's input shortfalls and output stock in the observation. */
+  needs_board: z.enum(['off', 'on']).default('off'),
 });
 export type Knobs = z.infer<typeof Knobs>;
 

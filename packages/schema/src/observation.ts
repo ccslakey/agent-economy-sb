@@ -19,8 +19,11 @@ export type Reputation = z.infer<typeof Reputation>;
 export const Observation = z.object({
   turn: Turn,
   round: Round,
-  min_turns: Turn,
-  end_hazard: z.number(),
+  /** How the game ends: a known last turn, or a hazard that starts after a minimum. */
+  horizon: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('fixed'), last_turn: Turn }),
+    z.object({ kind: z.literal('random'), min_turns: Turn, hazard: z.number() }),
+  ]),
   you: z.object({
     id: CompanyId,
     name: z.string(),
@@ -39,7 +42,21 @@ export const Observation = z.object({
       FinalGood,
       z.object({ qty: Qty, price: Cash, proceeds: Cash }),
     ),
+    /** What last turn's operations step charged this company. */
+    last_turn_charges: z.object({ upkeep: Cash, storage: Cash, storage_units: Qty }),
   }),
+  /** The NPC buys any good as scrap at this price per unit, any quantity, in the operations step. */
+  scrap_per_unit: z.record(Good, z.number()),
+  /** With the needs_board knob on: each company's input shortfall for a full turn and the output it holds. Null when off. */
+  needs: z
+    .array(
+      z.object({
+        id: CompanyId,
+        wants: z.partialRecord(Good, Qty),
+        offers: z.partialRecord(Good, Qty),
+      }),
+    )
+    .nullable(),
   /** The reference price of every good: the base for scrap, escrow fees, and the end inventory value. */
   reference_prices: z.record(Good, Cash),
   /** Everyone still in the game. `model` is null unless the model identity knob is `visible`. */
