@@ -59,3 +59,19 @@ export const fetchPlans = (token: string, runId: string, company: string) =>
 
 export const fetchNotes = (token: string, runId: string, company: string) =>
   admin<{ text: string }>(token, `/admin/runs/${runId}/notes/${company}`).then((r) => r.text);
+
+export type CostBucket = {
+  sessions: number;
+  tokens_in: number;
+  tokens_out: number;
+  cost_usd: number;
+  duration_ms: number;
+};
+export type Cost = {
+  by_company: Record<string, CostBucket>;
+  by_model: Record<string, CostBucket>;
+  by_turn: Record<string, CostBucket>;
+};
+
+export const fetchCost = (token: string, runId: string) =>
+  admin<Cost>(token, `/admin/runs/${runId}/cost`);

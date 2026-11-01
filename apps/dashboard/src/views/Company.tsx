@@ -2,6 +2,7 @@ import { CompanyId, type RunState } from '@agent-economy/schema';
 import { useEffect, useState } from 'react';
 import { fetchNotes, fetchPlans, type PlanVersion } from '../api.ts';
 import { companyRows, describe, type Log, snapshots, timeline } from '../derive.ts';
+import { LineChart } from './Chart.tsx';
 import { cell } from './Contracts.tsx';
 
 export function Company({
@@ -29,6 +30,7 @@ export function Company({
   }, [token, runId, selected]);
   const latestPlan = plans.findLast((p) => p.turn <= turn)?.plan ?? null;
   const id = CompanyId.safeParse(selected);
+  const history = id.success ? snapshots(log, id.data) : [];
   const current = id.success ? rows.find((r) => r.company.id === id.data) : undefined;
   return (
     <section>
@@ -115,11 +117,20 @@ export function Company({
               </details>
             </details>
           )}
+          <LineChart
+            title="Cash and net worth by turn"
+            x={history.map((s) => s.turn)}
+            marker={turn}
+            series={[
+              { label: 'cash', points: history.map((s) => s.cash) },
+              { label: 'net worth', points: history.map((s) => s.score) },
+            ]}
+          />
           <details>
             <summary>Cash and score by turn</summary>
             <table style={{ borderCollapse: 'collapse', fontSize: 13 }}>
               <tbody>
-                {snapshots(log, id.data)
+                {history
                   .filter((s) => s.turn <= turn)
                   .map((s) => (
                     <tr key={s.turn}>

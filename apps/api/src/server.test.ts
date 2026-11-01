@@ -451,6 +451,54 @@ describe('agent routes', () => {
     });
   });
 
+  it('rolls traces up into a cost panel by company, model, and turn', async () => {
+    const run = await startRun();
+    const trace = (company: string, model: string, tokens_in: number) => ({
+      company,
+      turn: 1,
+      round: 1,
+      kind: 'round',
+      session_id: null,
+      model,
+      result: {},
+      tokens_in,
+      tokens_out: 10,
+      cost_usd: 0.5,
+      duration_ms: 1000,
+    });
+    for (const body of [
+      trace('c01', 'sonnet', 100),
+      trace('c01', 'sonnet', 200),
+      trace('c05', 'opus', 50),
+    ]) {
+      const posted = await api().inject({
+        method: 'POST',
+        url: `/admin/runs/${run.run_id}/traces`,
+        headers: { 'x-admin-token': 'admin' },
+        payload: body,
+      });
+      expect(posted.statusCode).toBe(201);
+    }
+    const cost = await api().inject({
+      method: 'GET',
+      url: `/admin/runs/${run.run_id}/cost`,
+      headers: { 'x-admin-token': 'admin' },
+    });
+    expect(cost.json()).toEqual({
+      by_company: {
+        c01: { sessions: 2, tokens_in: 300, tokens_out: 20, cost_usd: 1, duration_ms: 2000 },
+        c05: { sessions: 1, tokens_in: 50, tokens_out: 10, cost_usd: 0.5, duration_ms: 1000 },
+      },
+      by_model: {
+        sonnet: { sessions: 2, tokens_in: 300, tokens_out: 20, cost_usd: 1, duration_ms: 2000 },
+        opus: { sessions: 1, tokens_in: 50, tokens_out: 10, cost_usd: 0.5, duration_ms: 1000 },
+      },
+      by_turn: {
+        '1': { sessions: 3, tokens_in: 350, tokens_out: 30, cost_usd: 1.5, duration_ms: 3000 },
+      },
+    });
+  });
+
   it('pauses the clock and resumes, and reloads live runs from the store on restart', async () => {
     const store = new MemoryStore();
     const run = await startRun(store);

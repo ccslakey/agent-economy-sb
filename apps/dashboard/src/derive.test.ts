@@ -9,6 +9,7 @@ import {
   lastTurn,
   leaderboard,
   leaderSince,
+  messageRows,
   snapshots,
   splitLog,
   stateAt,
@@ -52,6 +53,18 @@ group('derive', () => {
     const cleared = played.state.market.clears.find((c) => c.turn === 4 && c.qty > 0);
     if (cleared !== undefined) expect(last?.prices[cleared.good]).toBe(cleared.price);
     expect(byTurn(log).at(-1)?.state).toEqual(played.state);
+  });
+  it('counts contract moves and messages per turn', () => {
+    if (log === null) throw new Error('no log');
+    const rows = byTurn(log);
+    const proposed = rows.reduce((sum, r) => sum + r.contracts.proposed, 0);
+    expect(proposed).toBe(Object.keys(played.state.contracts).length);
+    const volume = messageRows(
+      played.state,
+      rows.map((r) => r.turn),
+    );
+    expect(volume.map((v) => v.turn)).toEqual([1, 2, 3, 4]);
+    expect(volume.reduce((sum, v) => sum + v.public + v.dm, 0)).toBe(played.state.messages.length);
   });
   it('ranks companies by net worth with one score per turn and names the leader since', () => {
     if (log === null) throw new Error('no log');
