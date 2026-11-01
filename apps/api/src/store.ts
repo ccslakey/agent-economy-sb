@@ -13,7 +13,27 @@ export type RunRow = {
   tokens: Record<string, string>;
 };
 
+/** One headless session: what was asked, what came back, and what it cost. */
+export type TraceRow = {
+  id: string;
+  run_id: RunId;
+  company: CompanyId;
+  turn: number;
+  round: number | null;
+  kind: 'round' | 'farming';
+  session_id: string | null;
+  model: string | null;
+  /** The CLI's full JSON result, or whatever the adapter captured on failure. */
+  result: Record<string, unknown>;
+  tokens_in: number;
+  tokens_out: number;
+  cost_usd: number;
+  duration_ms: number;
+};
+
 export interface Store {
+  putTrace(trace: TraceRow): Promise<void>;
+  listTraces(runId: RunId, company?: CompanyId): Promise<TraceRow[]>;
   createRun(run: RunRow): Promise<void>;
   listRuns(): Promise<RunRow[]>;
   getRun(id: RunId): Promise<RunRow | null>;
@@ -29,6 +49,16 @@ export class MemoryStore implements Store {
   private readonly runs = new Map<RunId, RunRow>();
   private readonly log = new Map<RunId, Event[]>();
   private readonly notes = new Map<string, string>();
+  private readonly traces: TraceRow[] = [];
+
+  async putTrace(trace: TraceRow): Promise<void> {
+    this.traces.push(structuredClone(trace));
+  }
+  async listTraces(runId: RunId, company?: CompanyId): Promise<TraceRow[]> {
+    return this.traces
+      .filter((t) => t.run_id === runId && (company === undefined || t.company === company))
+      .map((t) => structuredClone(t));
+  }
 
   async createRun(run: RunRow): Promise<void> {
     if (this.runs.has(run.id)) throw new Error(`run ${run.id} exists`);

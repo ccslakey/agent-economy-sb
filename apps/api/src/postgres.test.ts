@@ -66,6 +66,25 @@ describe.skipIf(url === undefined)('PostgresStore', () => {
     await store.putNotes(runId, CompanyId.parse('c01'), 'second');
     expect(await store.getNotes(runId, CompanyId.parse('c01'))).toBe('second');
 
+    const trace = {
+      id: randomUUID(),
+      run_id: runId,
+      company: CompanyId.parse('c01'),
+      turn: 1,
+      round: 2,
+      kind: 'round' as const,
+      session_id: 's1',
+      model: 'sonnet',
+      result: { result: 'submitted', num_turns: 4 },
+      tokens_in: 1200,
+      tokens_out: 80,
+      cost_usd: 0.03,
+      duration_ms: 900,
+    };
+    await store.putTrace(trace);
+    expect(await store.listTraces(runId, CompanyId.parse('c01'))).toEqual([trace]);
+    expect(await store.listTraces(runId, CompanyId.parse('c02'))).toEqual([]);
+
     await store.setRunStatus(runId, 'ended');
     expect((await store.listRuns()).find((r) => r.id === runId)?.status).toBe('ended');
   });

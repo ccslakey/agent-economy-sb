@@ -4,3 +4,4 @@ dist/
 todo.md
 .audit/
 *.log
+game.json

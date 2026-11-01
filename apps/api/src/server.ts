@@ -1,7 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { type ActionError, type Company, CompanyId, RunConfig, RunId } from '@agent-economy/schema';
+import {
+  type ActionError,
+  BotStrategy,
+  type Company,
+  CompanyId,
+  RunConfig,
+  RunId,
+} from '@agent-economy/schema';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { Game, type GameOptions } from './game.ts';
@@ -323,6 +330,74 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
       return { text: await options.store.getNotes(id.data, company.data) };
     },
   );
+
+  app.get<{ Params: { id: string } }>('/admin/runs/:id/tokens', async (request, reply) => {
+    if (!(await admin(request, reply))) return;
+    const id = RunId.safeParse(request.params.id);
+    const run = id.success ? await options.store.getRun(id.data) : null;
+    if (run === null) return reply.code(404).send({ code: 'NOT_FOUND', reason: 'no such run' });
+    return { tokens: run.tokens };
+  });
+
+  const TraceBody = z.object({
+    company: CompanyId,
+    turn: z.number().int(),
+    round: z.number().int().nullable(),
+    kind: z.enum(['round', 'farming']),
+    session_id: z.string().nullable(),
+    model: z.string().nullable(),
+    result: z.record(z.string(), z.unknown()),
+    tokens_in: z.number().int(),
+    tokens_out: z.number().int(),
+    cost_usd: z.number(),
+    duration_ms: z.number().int(),
+  });
+
+  app.post<{ Params: { id: string } }>('/admin/runs/:id/traces', async (request, reply) => {
+    if (!(await admin(request, reply))) return;
+    const id = RunId.safeParse(request.params.id);
+    const body = TraceBody.safeParse(request.body);
+    if (!id.success || !body.success) {
+      return reply.code(400).send({ code: 'INVALID_TRACE', reason: 'bad run id or trace body' });
+    }
+    const trace = { id: randomUUID(), run_id: id.data, ...body.data };
+    await options.store.putTrace(trace);
+    const game = games.get(id.data);
+    if (game !== undefined) {
+      await game.record({
+        type: 'agent_trace_recorded',
+        payload: { trace_id: trace.id },
+        actor: body.data.company,
+      });
+    }
+    return reply.code(201).send({ id: trace.id });
+  });
+
+  const CompanyQuery = z.object({ company: CompanyId.optional() });
+
+  app.get<{ Params: { id: string } }>('/admin/runs/:id/traces', async (request, reply) => {
+    if (!(await admin(request, reply))) return;
+    const id = RunId.safeParse(request.params.id);
+    if (!id.success) return reply.code(404).send({ code: 'NOT_FOUND', reason: 'no such run' });
+    const { company } = CompanyQuery.parse(request.query);
+    return { traces: await options.store.listTraces(id.data, company) };
+  });
+
+  const ReplaceBody = z.object({ company: CompanyId, strategy: BotStrategy, reason: z.string() });
+
+  app.post<{ Params: { id: string } }>('/admin/runs/:id/replace', async (request, reply) => {
+    if (!(await admin(request, reply))) return;
+    const game = gameOrFail(request.params.id, reply);
+    if (game === null) return;
+    const body = ReplaceBody.safeParse(request.body);
+    if (!body.success) return reply.code(400).send({ code: 'INVALID_ACTION', reason: 'bad body' });
+    await game.record({
+      type: 'agent_replaced_by_bot',
+      payload: { strategy: body.data.strategy, reason: body.data.reason },
+      actor: body.data.company,
+    });
+    return { ok: true };
+  });
 
   app.addHook('onClose', async () => {
     for (const game of games.values()) game.close();
