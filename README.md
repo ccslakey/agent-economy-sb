@@ -26,11 +26,13 @@ createdb agent_economy
 DATABASE_URL=postgres:///agent_economy ADMIN_TOKEN=change-me node apps/api/src/main.ts
 ```
 
-Create a run and keep the tokens it returns:
+Create a run from a JSON config (same shape as `configs/baseline.yaml`) and keep the tokens it returns:
 
 ```sh
 curl -s -X POST localhost:3000/admin/runs -H 'x-admin-token: change-me' \
-  -H 'content-type: application/json' -d @configs/baseline.yaml.json
+  -H 'content-type: application/json' -d '{"seed":1,"experiment_id":"try",
+  "population":[{"id":"c01","name":"Ironreach","role":"miner","driver":{"kind":"bot","strategy":"honest_trader"}},
+                {"id":"c05","name":"Emberworks","role":"smelter","driver":{"kind":"bot","strategy":"honest_trader"}}]}'
 ```
 
 The admin can advance a round by hand with `POST /admin/runs/<id>/advance`, read state at `/state`, and read events at `/events?after=<seq>`.
