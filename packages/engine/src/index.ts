@@ -1,4 +1,5 @@
 export { addGoods, apply, fold, initialState } from './fold.ts';
+export { type ContractCounts, gini, type RunMetrics, runMetrics } from './metrics.ts';
 export { newsFrom } from './news.ts';
 export { observe, type RoundNews } from './observe.ts';
 export { type Rng, rngFor } from './rng.ts';
@@ -7,8 +8,8 @@ export {
   capacityOf,
   contractValue,
   demandFactor,
-  escrowFeePerSide,
   partyOf,
+  penaltyFor,
   remainingValue,
   reputationOf,
   scoreOf,

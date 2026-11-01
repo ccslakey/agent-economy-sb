@@ -1,5 +1,7 @@
 import type { Contract, RunState } from '@agent-economy/schema';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { byTurn, CONTRACT_MOVES, type Log } from '../derive.ts';
+import { LineChart } from './Chart.tsx';
 
 const STATUSES = [
   'all',
@@ -7,7 +9,6 @@ const STATUSES = [
   'active',
   'completed',
   'defaulted',
-  'cured',
   'rejected',
   'withdrawn',
   'expired',
@@ -22,13 +23,31 @@ const contractNumber = (id: string): number => Number(id.slice(1));
 const statusTurn = (k: Contract): number =>
   k.status.status === 'active' ? k.status.accepted_turn : k.status.turn;
 
-export function Contracts({ state }: { state: RunState }) {
+export function Contracts({ log, state, turn }: { log: Log; state: RunState; turn: number }) {
   const [status, setStatus] = useState<(typeof STATUSES)[number]>('all');
+  const perTurn = useMemo(() => byTurn(log), [log]);
   const rows = Object.values(state.contracts)
     .filter((k) => status === 'all' || k.status.status === status)
     .sort((a, b) => contractNumber(a.id) - contractNumber(b.id));
   return (
     <section>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+        <LineChart
+          title="Contracts per turn"
+          x={perTurn.map((r) => r.turn)}
+          marker={turn}
+          series={CONTRACT_MOVES.map((move) => ({
+            label: move,
+            points: perTurn.map((r) => r.contracts[move]),
+          }))}
+        />
+        <LineChart
+          title="Cash destroyed by penalties"
+          x={perTurn.map((r) => r.turn)}
+          marker={turn}
+          series={[{ label: 'penalties', points: perTurn.map((r) => r.penalties) }]}
+        />
+      </div>
       <p>
         <label>
           Status{' '}
@@ -45,20 +64,13 @@ export function Contracts({ state }: { state: RunState }) {
       <table style={{ borderCollapse: 'collapse', fontSize: 13 }}>
         <thead>
           <tr>
-            {[
-              'id',
-              'proposer',
-              'counterparty',
-              'escrow',
-              'obligations',
-              'status',
-              'turn',
-              'terms',
-            ].map((h) => (
-              <th key={h} style={cell}>
-                {h}
-              </th>
-            ))}
+            {['id', 'proposer', 'counterparty', 'obligations', 'status', 'turn', 'terms'].map(
+              (h) => (
+                <th key={h} style={cell}>
+                  {h}
+                </th>
+              ),
+            )}
           </tr>
         </thead>
         <tbody>
@@ -67,13 +79,11 @@ export function Contracts({ state }: { state: RunState }) {
               <td style={cell}>{k.id}</td>
               <td style={cell}>{k.proposer}</td>
               <td style={cell}>{k.counterparty}</td>
-              <td style={cell}>{k.escrow ? 'yes' : ''}</td>
               <td style={cell}>{k.obligations.map(obligation).join('; ')}</td>
               <td style={cell}>
                 {k.status.status}
                 {k.status.status === 'defaulted' &&
                   ` by ${k.status.by.join(', ')} (${k.status.unmet_value})`}
-                {k.status.status === 'cured' && ` (${k.status.cured_value})`}
               </td>
               <td style={cell}>{statusTurn(k)}</td>
               <td style={cell}>{k.terms_text}</td>

@@ -459,7 +459,6 @@ describe('contracts', () => {
   const oreForCash = {
     type: 'propose_contract',
     counterparty: 'c05',
-    escrow: false,
     terms_text: '4 ore now, 60 cash next turn',
     obligations: [
       { kind: 'goods', by: 'proposer', good: 'ore', qty: 4, due_turn: 1 },
@@ -480,8 +479,10 @@ describe('contracts', () => {
     return k;
   };
   const resolve = (g: ReturnType<typeof game>) => g.run({ kind: 'resolve_round' });
+  const codes = (events: Event[]) =>
+    events.map((e) => (e.type === 'action_rejected' ? e.payload.code : e.type));
 
-  it('mints the contract when the round resolves and walks it to completed', () => {
+  it('mints the contract when the round resolves, holds deposits, and releases both sides together', () => {
     const g = game({ starting_inventory: minerWithOre });
     expect(types(g.submit('c01', [oreForCash]))).toEqual(['action_submitted']);
     expect(g.state().contracts).toEqual({});
@@ -501,32 +502,36 @@ describe('contracts', () => {
     expect(contract(g, 'k1').status).toEqual({ status: 'active', accepted_turn: 1 });
 
     g.submit('c01', [{ type: 'deliver', contract: 'k1', obligation: 0, qty: 4 }]);
-    expect(types(resolve(g))).toEqual(['delivery_made', 'round_resolved']);
+    expect(types(resolve(g))).toEqual(['escrow_deposited', 'round_resolved']);
     expect(company(g, 'c01').inventory).toEqual({ ore: 8 });
-    expect(company(g, 'c05').inventory).toEqual({ ore: 16 });
+    expect(company(g, 'c05').inventory).toEqual({ ore: 12 });
+    expect(contract(g, 'k1').obligations[0]?.met).toBe(4);
 
     expect(types(g.run({ kind: 'operations' }))).not.toContain('contract_defaulted');
     g.submit('c05', [{ type: 'pay', contract: 'k1', obligation: 1, amount: 60 }]);
     expect(types(resolve(g))).toEqual([
-      'payment_made',
+      'escrow_deposited',
+      'escrow_released',
       'contract_completed',
       'round_resolved',
       'round_opened',
     ]);
     expect(contract(g, 'k1').status).toEqual({ status: 'completed', accepted_turn: 1, turn: 2 });
-    expect(company(g, 'c05').cash).toBe(600 - 40 - 16 - 60);
+    expect(company(g, 'c05')).toMatchObject({ inventory: { ore: 16 }, cash: 600 - 40 - 12 - 60 });
     expect(company(g, 'c01').cash).toBe(600 - 40 - 8 + 60);
-    expect(reputationOf(g.state(), company(g, 'c01'))).toMatchObject({
+    expect(reputationOf(g.state(), company(g, 'c01'))).toEqual({
       completed: 1,
       defaulted: 0,
+      value_defaulted: 0,
     });
-    expect(reputationOf(g.state(), company(g, 'c05'))).toMatchObject({
+    expect(reputationOf(g.state(), company(g, 'c05'))).toEqual({
       completed: 1,
       defaulted: 0,
+      value_defaulted: 0,
     });
   });
 
-  it('defaults an unmet obligation at the end of its due turn, then cures it', () => {
+  it('settles at the first missed due turn: refund for the performer, forfeit and penalty for the failer', () => {
     const g = game({ starting_inventory: minerWithOre });
     g.submit('c01', [oreForCash]);
     resolve(g);
@@ -535,72 +540,116 @@ describe('contracts', () => {
     g.submit('c01', [{ type: 'deliver', contract: 'k1', obligation: 0, qty: 4 }]);
     resolve(g);
     g.run({ kind: 'operations' });
-    const defaults = g.closeTurn().filter((e) => e.type === 'contract_defaulted');
-    expect(defaults.map((e) => (e.type === 'contract_defaulted' ? e.payload : null))).toEqual([
-      { contract: 'k1', by: ['counterparty'], unmet_value: 60 },
-    ]);
-    expect(contract(g, 'k1').status).toMatchObject({
-      status: 'defaulted',
-      turn: 2,
-      by: ['counterparty'],
+    const events = g.closeTurn();
+    expect(
+      types(events).filter(
+        (x) => x.startsWith('escrow') || x.startsWith('contract') || x === 'penalty_charged',
+      ),
+    ).toEqual(['escrow_refunded', 'escrow_forfeited', 'penalty_charged', 'contract_defaulted']);
+    const penalty = events.find((e) => e.type === 'penalty_charged');
+    expect(penalty?.type === 'penalty_charged' && penalty.payload).toEqual({
+      contract: 'k1',
+      party: 'counterparty',
+      amount: 45,
     });
+    expect(contract(g, 'k1')).toMatchObject({
+      status: { status: 'defaulted', turn: 2, by: ['counterparty'], unmet_value: 60 },
+      obligations: [{ met: 0 }, { met: 0 }],
+    });
+    expect(company(g, 'c01').inventory).toEqual({ ore: 12 });
+    expect(company(g, 'c05').cash).toBe(600 - 40 - 12 - 40 - 12 - 45);
     expect(reputationOf(g.state(), company(g, 'c05'))).toEqual({
       completed: 0,
       defaulted: 1,
-      cured: 0,
       value_defaulted: 60,
-      value_cured: 0,
+    });
+    expect(reputationOf(g.state(), company(g, 'c01'))).toEqual({
+      completed: 0,
+      defaulted: 0,
+      value_defaulted: 0,
     });
     expect(reputationOf(g.state(), company(g, 'c05'), 1).defaulted).toBe(0);
+    expect(
+      codes(g.submit('c05', [{ type: 'pay', contract: 'k1', obligation: 1, amount: 60 }])),
+    ).toEqual(['CONTRACT_NOT_ACTIVE']);
+  });
 
-    g.submit('c05', [{ type: 'pay', contract: 'k1', obligation: 1, amount: 60 }]);
-    expect(types(resolve(g))).toEqual([
-      'payment_made',
-      'contract_cured',
-      'round_resolved',
-      'round_opened',
+  it('halves the penalty when enforcement is off, and a failing party loses what it put in', () => {
+    const g = game({ starting_inventory: minerWithOre }, { enforcement: 'off' });
+    g.submit('c01', [
+      {
+        ...oreForCash,
+        obligations: [
+          { kind: 'goods', by: 'proposer', good: 'ore', qty: 4, due_turn: 2 },
+          { kind: 'cash', by: 'counterparty', amount: 100, due_turn: 1 },
+        ],
+      },
+    ]);
+    resolve(g);
+    g.submit('c05', [{ type: 'accept_contract', contract: 'k1' }]);
+    resolve(g);
+    g.submit('c01', [{ type: 'deliver', contract: 'k1', obligation: 0, qty: 2 }]);
+    g.submit('c05', [{ type: 'pay', contract: 'k1', obligation: 1, amount: 40 }]);
+    const events = g.closeTurn();
+    const penalty = events.find((e) => e.type === 'penalty_charged');
+    expect(penalty?.type === 'penalty_charged' && penalty.payload).toEqual({
+      contract: 'k1',
+      party: 'counterparty',
+      amount: 37,
+    });
+    expect(company(g, 'c01').inventory).toEqual({ ore: 12 });
+    expect(company(g, 'c05').cash).toBe(600 - 40 - 40 - 12 - 37);
+    expect(contract(g, 'k1').status).toMatchObject({
+      status: 'defaulted',
+      by: ['counterparty'],
+      unmet_value: 60,
+    });
+  });
+
+  it('penalises both parties when both miss the due turn', () => {
+    const g = game({ starting_inventory: minerWithOre });
+    g.submit('c01', [
+      {
+        ...oreForCash,
+        obligations: [
+          { kind: 'goods', by: 'proposer', good: 'ore', qty: 4, due_turn: 1 },
+          { kind: 'cash', by: 'counterparty', amount: 60, due_turn: 1 },
+        ],
+      },
+    ]);
+    resolve(g);
+    g.submit('c05', [{ type: 'accept_contract', contract: 'k1' }]);
+    const events = g.closeTurn();
+    const penalties = events
+      .filter((e) => e.type === 'penalty_charged')
+      .map((e) => (e.type === 'penalty_charged' ? e.payload : null));
+    expect(penalties).toEqual([
+      { contract: 'k1', party: 'proposer', amount: 45 },
+      { contract: 'k1', party: 'counterparty', amount: 45 },
     ]);
     expect(contract(g, 'k1').status).toMatchObject({
-      status: 'cured',
-      defaulted_turn: 2,
-      defaulted_by: ['counterparty'],
-      turn: 3,
-      cured_value: 60,
+      by: ['proposer', 'counterparty'],
+      unmet_value: 120,
     });
-    expect(reputationOf(g.state(), company(g, 'c05'))).toMatchObject({
-      defaulted: 0,
-      cured: 1,
-      value_cured: 60,
-    });
-    expect(reputationOf(g.state(), company(g, 'c01'))).toMatchObject({ completed: 1, cured: 0 });
   });
 
   it('rejects what the lifecycle forbids, at submit time', () => {
     const g = game({ starting_inventory: minerWithOre });
     g.submit('c01', [oreForCash]);
     resolve(g);
-    const codes = (events: Event[]) =>
-      events.map((e) => (e.type === 'action_rejected' ? e.payload.code : e.type));
     expect(
       codes(
         g.submit('c09', [
           { type: 'accept_contract', contract: 'k1' },
           { type: 'accept_contract', contract: 'k9' },
           { ...oreForCash, counterparty: 'c09' },
-          { ...oreForCash, escrow: true },
           {
             ...oreForCash,
             obligations: [{ kind: 'cash', by: 'proposer', amount: 1, due_turn: 0 }],
           },
         ]),
       ),
-    ).toEqual([
-      'NOT_A_PARTY',
-      'CONTRACT_NOT_FOUND',
-      'INVALID_ACTION',
-      'action_submitted',
-      'INVALID_ACTION',
-    ]);
+    ).toEqual(['NOT_A_PARTY', 'CONTRACT_NOT_FOUND', 'INVALID_ACTION', 'INVALID_ACTION']);
     expect(codes(g.submit('c01', [{ type: 'accept_contract', contract: 'k1' }]))).toEqual([
       'NOT_A_PARTY',
     ]);
@@ -662,43 +711,7 @@ describe('contracts', () => {
     expect(contract(g, 'k1').status).toEqual({ status: 'expired', turn: 2 });
   });
 
-  it('executes obligations itself under the enforced knob and defaults what it cannot', () => {
-    const g = game({ starting_inventory: minerWithOre }, { enforcement: 'enforced' });
-    g.submit('c01', [
-      {
-        ...oreForCash,
-        obligations: [
-          { kind: 'goods', by: 'proposer', good: 'ore', qty: 4, due_turn: 1 },
-          { kind: 'cash', by: 'counterparty', amount: 60, due_turn: 1 },
-        ],
-      },
-      {
-        ...oreForCash,
-        counterparty: 'c09',
-        obligations: [{ kind: 'cash', by: 'counterparty', amount: 5000, due_turn: 1 }],
-      },
-    ]);
-    resolve(g);
-    g.submit('c05', [{ type: 'accept_contract', contract: 'k1' }]);
-    g.submit('c09', [{ type: 'accept_contract', contract: 'k2' }]);
-    resolve(g);
-    const events = g.closeTurn();
-    expect(types(events).filter((t) => t.startsWith('contract_') || t.endsWith('_made'))).toEqual([
-      'delivery_made',
-      'payment_made',
-      'contract_completed',
-      'contract_defaulted',
-    ]);
-    expect(contract(g, 'k1').status.status).toBe('completed');
-    expect(contract(g, 'k2').status).toMatchObject({
-      status: 'defaulted',
-      by: ['counterparty'],
-      unmet_value: 5000,
-    });
-    expect(company(g, 'c05').inventory).toEqual({ ore: 16 });
-  });
-
-  it('defaults the active contracts of a bankrupt company and expires its proposals', () => {
+  it('settles the active contracts of a bankrupt company against it and expires its proposals', () => {
     const g = game({ starting_inventory: minerWithOre, starting_cash: 0, overdraft_limit: -30 });
     g.submit('c01', [
       {
@@ -721,6 +734,7 @@ describe('contracts', () => {
       unmet_value: 60,
     });
     expect(contract(g, 'k2').status.status).toBe('expired');
+    expect(types(events)).toContain('penalty_charged');
   });
 });
 
@@ -741,72 +755,6 @@ describe('trade layer', () => {
     toolmaker: {},
     furniture_maker: {},
   };
-  const escrowed = {
-    type: 'propose_contract',
-    counterparty: 'c05',
-    escrow: true,
-    terms_text: 'escrowed ore for cash',
-    obligations: [
-      { kind: 'goods', by: 'proposer', good: 'ore', qty: 4, due_turn: 2 },
-      { kind: 'cash', by: 'counterparty', amount: 60, due_turn: 2 },
-    ],
-  };
-
-  it('charges the escrow fee on acceptance, holds deposits, and releases both sides together', () => {
-    const g = game({ starting_inventory: minerWithOre });
-    g.submit('c01', [escrowed]);
-    resolve(g);
-    g.submit('c05', [{ type: 'accept_contract', contract: 'k1' }]);
-    const accepted = resolve(g).find((e) => e.type === 'contract_accepted');
-    expect(accepted?.type === 'contract_accepted' && accepted.payload.escrow_fee_per_side).toBe(3);
-    expect(company(g, 'c01').cash).toBe(597);
-    expect(company(g, 'c05').cash).toBe(597);
-
-    g.submit('c01', [{ type: 'deliver', contract: 'k1', obligation: 0, qty: 4 }]);
-    expect(types(resolve(g))).toEqual(['escrow_deposited', 'round_resolved']);
-    expect(company(g, 'c01').inventory).toEqual({ ore: 8 });
-    expect(company(g, 'c05').inventory).toEqual({ ore: 12 });
-    expect(contract(g, 'k1').obligations[0]?.met).toBe(4);
-
-    g.run({ kind: 'operations' });
-    g.submit('c05', [{ type: 'pay', contract: 'k1', obligation: 1, amount: 60 }]);
-    expect(types(resolve(g))).toEqual([
-      'escrow_deposited',
-      'escrow_released',
-      'contract_completed',
-      'round_resolved',
-      'round_opened',
-    ]);
-    expect(company(g, 'c05').inventory).toEqual({ ore: 16 });
-    expect(company(g, 'c01').cash).toBe(597 - 40 - 8 + 60);
-    expect(company(g, 'c05').cash).toBe(597 - 40 - 12 - 60);
-    expect(contract(g, 'k1').status.status).toBe('completed');
-  });
-
-  it('refunds escrow deposits when the latest due turn passes, then records the default', () => {
-    const g = game({ starting_inventory: minerWithOre });
-    g.submit('c01', [escrowed]);
-    resolve(g);
-    g.submit('c05', [{ type: 'accept_contract', contract: 'k1' }]);
-    resolve(g);
-    g.submit('c01', [{ type: 'deliver', contract: 'k1', obligation: 0, qty: 4 }]);
-    g.closeTurn();
-    expect(company(g, 'c01').inventory).toEqual({ ore: 8 });
-    const events = g.closeTurn();
-    expect(types(events).filter((t) => t.startsWith('escrow') || t.startsWith('contract'))).toEqual(
-      ['escrow_refunded', 'contract_defaulted'],
-    );
-    expect(company(g, 'c01').inventory).toEqual({ ore: 12 });
-    expect(contract(g, 'k1')).toMatchObject({
-      status: { status: 'defaulted', by: ['counterparty'], unmet_value: 60 },
-      obligations: [{ met: 0 }, { met: 0 }],
-    });
-  });
-
-  it('refuses escrow when the enforcement knob is none', () => {
-    const g = game({ starting_inventory: minerWithOre }, { enforcement: 'none' });
-    expect(codes(g.submit('c01', [escrowed]))).toEqual(['INVALID_ACTION']);
-  });
 
   it('caps messages per round and delivers them at round end', () => {
     const g = game();
@@ -909,8 +857,9 @@ describe('trade layer', () => {
     const g = game({ starting_inventory: minerWithOre }, { rebranding: 'on' });
     g.submit('c01', [
       {
-        ...escrowed,
-        escrow: false,
+        type: 'propose_contract',
+        counterparty: 'c05',
+        terms_text: 'one ore, a gift',
         obligations: [{ kind: 'goods', by: 'proposer', good: 'ore', qty: 1, due_turn: 1 }],
       },
     ]);
@@ -980,7 +929,6 @@ describe('observation', () => {
       {
         type: 'propose_contract',
         counterparty: 'c05',
-        escrow: false,
         terms_text: '',
         obligations: [{ kind: 'goods', by: 'proposer', good: 'ore', qty: 4, due_turn: 3 }],
       },
@@ -1029,11 +977,11 @@ describe('observation', () => {
     expect(seen.companies.map((c) => c.id)).toEqual(['c01', 'c03', 'c04', 'c05', 'c09']);
     expect(seen.companies[0]?.model).toBeNull();
     expect(seen.reputation).toEqual({
-      c01: { completed: 0, defaulted: 0, cured: 0, value_defaulted: 0, value_cured: 0 },
-      c03: { completed: 0, defaulted: 0, cured: 0, value_defaulted: 0, value_cured: 0 },
-      c04: { completed: 0, defaulted: 0, cured: 0, value_defaulted: 0, value_cured: 0 },
-      c05: { completed: 0, defaulted: 0, cured: 0, value_defaulted: 0, value_cured: 0 },
-      c09: { completed: 0, defaulted: 0, cured: 0, value_defaulted: 0, value_cured: 0 },
+      c01: { completed: 0, defaulted: 0, value_defaulted: 0 },
+      c03: { completed: 0, defaulted: 0, value_defaulted: 0 },
+      c04: { completed: 0, defaulted: 0, value_defaulted: 0 },
+      c05: { completed: 0, defaulted: 0, value_defaulted: 0 },
+      c09: { completed: 0, defaulted: 0, value_defaulted: 0 },
     });
     expect(seen.market.last_turn).toEqual({});
     g.closeTurn();

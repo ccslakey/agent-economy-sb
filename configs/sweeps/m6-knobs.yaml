@@ -1,0 +1,58 @@
+# M6's first two sweeps in one file: enforcement on against off, and the needs board on against
+# off, each paired by seed against the same baseline (the M4 penalty-regime config).
+#   ADMIN_TOKEN=... node apps/runner/src/sweep.ts --api http://localhost:3000 --sweep configs/sweeps/m6-knobs.yaml --concurrency 2
+experiment_id: m6-knobs
+seeds: [104, 105, 106]
+base:
+  population:
+    - {
+        id: c01,
+        name: Ironreach,
+        role: miner,
+        driver:
+          { kind: llm, model: sonnet, effort: medium, harness_version: 1, prompt_variant: neutral },
+      }
+    - {
+        id: c03,
+        name: Fellwood,
+        role: logger,
+        driver:
+          { kind: llm, model: sonnet, effort: medium, harness_version: 1, prompt_variant: neutral },
+      }
+    - {
+        id: c05,
+        name: Emberworks,
+        role: smelter,
+        driver:
+          { kind: llm, model: sonnet, effort: medium, harness_version: 1, prompt_variant: neutral },
+      }
+    - {
+        id: c07,
+        name: Birchline Mills,
+        role: mill,
+        driver:
+          { kind: llm, model: sonnet, effort: medium, harness_version: 1, prompt_variant: neutral },
+      }
+    - {
+        id: c09,
+        name: Anvilgate,
+        role: toolmaker,
+        driver:
+          { kind: llm, model: sonnet, effort: medium, harness_version: 1, prompt_variant: neutral },
+      }
+    - {
+        id: c11,
+        name: Hearthstead,
+        role: furniture_maker,
+        driver:
+          { kind: llm, model: sonnet, effort: medium, harness_version: 1, prompt_variant: neutral },
+      }
+  knobs:
+    horizon: { kind: fixed, last_turn: 15 }
+  limits:
+    round_wall_clock_seconds: 900
+    max_concurrent_sessions: 6
+variants:
+  - { name: baseline }
+  - { name: enforcement-off, knobs: { enforcement: "off" } }
+  - { name: needs-board, knobs: { needs_board: "on" } }

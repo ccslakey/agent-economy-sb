@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fold, reputationOf, scoreOf } from '@agent-economy/engine';
+import { fold, reputationOf, runMetrics, scoreOf } from '@agent-economy/engine';
 import {
   type ActionError,
   BotStrategy,
@@ -14,7 +14,7 @@ import {
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { Game, type GameOptions } from './game.ts';
-import type { RunRow, Store } from './store.ts';
+import type { RunRow, Store, TraceRow } from './store.ts';
 
 // The only boundary agents cross. Agent routes under /v1 take a bearer token per company and
 // spend one tool call each. Admin routes create and drive runs and take the admin token.
@@ -281,14 +281,32 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
     if (!(await admin(request, reply))) return;
     const runs = await options.store.listRuns();
     return {
-      runs: runs.map((r) => ({
-        id: r.id,
-        experiment_id: r.config.experiment_id,
-        seed: r.config.seed,
-        status: r.status,
-        turn: games.get(r.id)?.state.turn ?? null,
-        phase: games.get(r.id)?.state.phase ?? null,
-      })),
+      runs: await Promise.all(
+        runs.map(async (r) => {
+          const traces = await options.store.listTraces(r.id);
+          const drivers = r.config.population.map((p) => p.driver);
+          return {
+            id: r.id,
+            experiment_id: r.config.experiment_id,
+            seed: r.config.seed,
+            status: r.status,
+            turn: games.get(r.id)?.state.turn ?? (await options.store.lastTurn(r.id)),
+            phase: games.get(r.id)?.state.phase ?? null,
+            knobs: r.config.knobs,
+            population: {
+              llm: drivers.filter((d) => d.kind === 'llm').length,
+              bot: drivers.filter((d) => d.kind === 'bot').length,
+              models: [...new Set(drivers.flatMap((d) => (d.kind === 'llm' ? [d.model] : [])))],
+            },
+            cost: {
+              sessions: traces.length,
+              tokens_in: traces.reduce((sum, t) => sum + t.tokens_in, 0),
+              tokens_out: traces.reduce((sum, t) => sum + t.tokens_out, 0),
+              cost_usd: traces.reduce((sum, t) => sum + t.cost_usd, 0),
+            },
+          };
+        }),
+      ),
     };
   });
 
@@ -409,6 +427,45 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
     return { traces: await options.store.listTraces(id.data, company) };
   });
 
+  /** Sessions, tokens, cost, and latency rolled up by company and by model. The traces themselves stay on the traces route. */
+  app.get<{ Params: { id: string } }>('/admin/runs/:id/cost', async (request, reply) => {
+    if (!(await admin(request, reply))) return;
+    const id = RunId.safeParse(request.params.id);
+    if (!id.success) return reply.code(404).send({ code: 'NOT_FOUND', reason: 'no such run' });
+    const traces = await options.store.listTraces(id.data);
+    type Bucket = {
+      sessions: number;
+      tokens_in: number;
+      tokens_out: number;
+      cost_usd: number;
+      duration_ms: number;
+    };
+    const rollup = (key: (t: TraceRow) => string): Record<string, Bucket> => {
+      const out: Record<string, Bucket> = {};
+      for (const t of traces) {
+        const bucket = out[key(t)] ?? {
+          sessions: 0,
+          tokens_in: 0,
+          tokens_out: 0,
+          cost_usd: 0,
+          duration_ms: 0,
+        };
+        out[key(t)] = bucket;
+        bucket.sessions += 1;
+        bucket.tokens_in += t.tokens_in;
+        bucket.tokens_out += t.tokens_out;
+        bucket.cost_usd += t.cost_usd;
+        bucket.duration_ms += t.duration_ms;
+      }
+      return out;
+    };
+    return {
+      by_company: rollup((t) => t.company),
+      by_model: rollup((t) => t.model ?? 'unknown'),
+      by_turn: rollup((t) => String(t.turn)),
+    };
+  });
+
   const ReplaceBody = z.object({ company: CompanyId, strategy: BotStrategy, reason: z.string() });
 
   app.post<{ Params: { id: string } }>('/admin/runs/:id/replace', async (request, reply) => {
@@ -437,6 +494,16 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
       return { plans: await options.store.listPlans(id.data, company.data) };
     },
   );
+
+  app.get<{ Params: { id: string } }>('/admin/runs/:id/metrics', async (request, reply) => {
+    if (!(await admin(request, reply))) return;
+    const id = RunId.safeParse(request.params.id);
+    const [started, ...rest] = id.success ? await options.store.events(id.data) : [];
+    if (started?.type !== 'run_started') {
+      return reply.code(404).send({ code: 'NOT_FOUND', reason: 'no such run' });
+    }
+    return runMetrics(started, rest);
+  });
 
   // The end-of-run report: scores, each company's last plan and thoughts, its notes, every bug
   // report it filed, and its farming answer. Built from the store so it works for ended runs.

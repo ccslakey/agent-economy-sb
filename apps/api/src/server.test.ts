@@ -245,6 +245,10 @@ describe('agent routes', () => {
     expect((list.json() as { runs: { status: string; phase: unknown }[] }).runs[0]).toMatchObject({
       status: 'ended',
       phase: { kind: 'ended' },
+      turn: 2,
+      knobs: { enforcement: 'on' },
+      population: { llm: 0, bot: 2, models: [] },
+      cost: { sessions: 0, tokens_in: 0, tokens_out: 0, cost_usd: 0 },
     });
     const closed = await api().inject({
       method: 'GET',
@@ -267,6 +271,26 @@ describe('agent routes', () => {
     expect((archived.json() as { events: { type: string }[] }).events.at(-1)?.type).toBe(
       'run_ended',
     );
+    const relisted = await api().inject({
+      method: 'GET',
+      url: '/admin/runs',
+      headers: { 'x-admin-token': 'admin' },
+    });
+    expect((relisted.json() as { runs: { turn: number | null }[] }).runs[0]?.turn).toBe(2);
+    const metrics = await api().inject({
+      method: 'GET',
+      url: `/admin/runs/${run.run_id}/metrics`,
+      headers: { 'x-admin-token': 'admin' },
+    });
+    expect(metrics.json()).toMatchObject({
+      turns: 2,
+      companies: 2,
+      bankruptcies: 0,
+      contracts: { proposed: 0, accepted: 0, completed: 0, defaulted: 0 },
+      default_rate: null,
+      penalties: 0,
+      messages: { public: 0, dm: 0 },
+    });
   });
 
   it('delivers contracts and messages at round end and lists them', async () => {
@@ -282,7 +306,6 @@ describe('agent routes', () => {
           {
             type: 'propose_contract',
             counterparty: 'c05',
-            escrow: false,
             terms_text: '',
             obligations: [{ kind: 'goods', by: 'proposer', good: 'ore', qty: 4, due_turn: 2 }],
           },
@@ -439,6 +462,54 @@ describe('agent routes', () => {
         },
         { id: 'c05', plan: null, plan_revisions: 0, bug_reports: [] },
       ],
+    });
+  });
+
+  it('rolls traces up into a cost panel by company, model, and turn', async () => {
+    const run = await startRun();
+    const trace = (company: string, model: string, tokens_in: number) => ({
+      company,
+      turn: 1,
+      round: 1,
+      kind: 'round',
+      session_id: null,
+      model,
+      result: {},
+      tokens_in,
+      tokens_out: 10,
+      cost_usd: 0.5,
+      duration_ms: 1000,
+    });
+    for (const body of [
+      trace('c01', 'sonnet', 100),
+      trace('c01', 'sonnet', 200),
+      trace('c05', 'opus', 50),
+    ]) {
+      const posted = await api().inject({
+        method: 'POST',
+        url: `/admin/runs/${run.run_id}/traces`,
+        headers: { 'x-admin-token': 'admin' },
+        payload: body,
+      });
+      expect(posted.statusCode).toBe(201);
+    }
+    const cost = await api().inject({
+      method: 'GET',
+      url: `/admin/runs/${run.run_id}/cost`,
+      headers: { 'x-admin-token': 'admin' },
+    });
+    expect(cost.json()).toEqual({
+      by_company: {
+        c01: { sessions: 2, tokens_in: 300, tokens_out: 20, cost_usd: 1, duration_ms: 2000 },
+        c05: { sessions: 1, tokens_in: 50, tokens_out: 10, cost_usd: 0.5, duration_ms: 1000 },
+      },
+      by_model: {
+        sonnet: { sessions: 2, tokens_in: 300, tokens_out: 20, cost_usd: 1, duration_ms: 2000 },
+        opus: { sessions: 1, tokens_in: 50, tokens_out: 10, cost_usd: 0.5, duration_ms: 1000 },
+      },
+      by_turn: {
+        '1': { sessions: 3, tokens_in: 350, tokens_out: 30, cost_usd: 1.5, duration_ms: 3000 },
+      },
     });
   });
 

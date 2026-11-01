@@ -220,11 +220,31 @@ export class PostgresStore implements Store {
       .execute();
   }
 
+  async lastTurn(runId: RunId): Promise<number | null> {
+    const row = await this.db
+      .selectFrom('events')
+      .select('turn')
+      .where('run_id', '=', runId)
+      .orderBy('seq', 'desc')
+      .limit(1)
+      .executeTakeFirst();
+    return row?.turn ?? null;
+  }
+
   async listTraces(runId: RunId, company?: CompanyId): Promise<TraceRow[]> {
     let query = this.db.selectFrom('agent_traces').selectAll().where('run_id', '=', runId);
     if (company !== undefined) query = query.where('company_id', '=', company);
     const rows = await query.orderBy('created_at').execute();
     return rows.map((row) => Trace.parse({ ...row, company: row.company_id }));
+  }
+
+  /** Test hook: overwrite a stored config without validation, to simulate a run saved by an older schema. */
+  async rawUpdateConfig(id: RunId, config: unknown): Promise<void> {
+    await this.db
+      .updateTable('runs')
+      .set({ config: JSON.stringify(config) })
+      .where('id', '=', id)
+      .execute();
   }
 
   async close(): Promise<void> {
@@ -245,9 +265,19 @@ export class PostgresStore implements Store {
       .execute();
   }
 
+  /** Runs whose stored config no longer parses, for example after a schema change, are skipped and counted here. */
+  skippedRuns: string[] = [];
+
   async listRuns(): Promise<RunRow[]> {
     const rows = await this.db.selectFrom('runs').selectAll().orderBy('created_at').execute();
-    return rows.map(toRunRow);
+    const out: RunRow[] = [];
+    this.skippedRuns = [];
+    for (const row of rows) {
+      const parsed = RunConfig.safeParse(row.config);
+      if (parsed.success) out.push(toRunRow(row));
+      else this.skippedRuns.push(row.id);
+    }
+    return out;
   }
 
   async getRun(id: RunId): Promise<RunRow | null> {

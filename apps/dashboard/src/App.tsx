@@ -1,12 +1,17 @@
 import type { Event, RunState } from '@agent-economy/schema';
 import { useEffect, useMemo, useState } from 'react';
 import { fetchEvents, listRuns, type RunListing, savedToken, saveToken } from './api.ts';
-import { type Log, lastTurn, splitLog, stateAt } from './derive.ts';
+import { byTurn, type Log, lastTurn, splitLog, stateAt } from './derive.ts';
 import { Company } from './views/Company.tsx';
 import { Contracts } from './views/Contracts.tsx';
+import { Cost } from './views/Cost.tsx';
+import { Leaderboard } from './views/Leaderboard.tsx';
 import { Messages } from './views/Messages.tsx';
+import { Runs } from './views/Runs.tsx';
+import { World } from './views/World.tsx';
 
-type View = 'contracts' | 'messages' | 'company';
+const VIEWS = ['world', 'leaderboard', 'contracts', 'messages', 'company', 'cost'] as const;
+type View = (typeof VIEWS)[number];
 
 export function App() {
   const [token, setToken] = useState(savedToken);
@@ -15,7 +20,7 @@ export function App() {
   const [runId, setRunId] = useState<string | null>(null);
   const [log, setLog] = useState<Log | null>(null);
   const [turn, setTurn] = useState<number | null>(null);
-  const [view, setView] = useState<View>('contracts');
+  const [view, setView] = useState<View>('world');
 
   useEffect(() => {
     if (token === '') return;
@@ -40,6 +45,7 @@ export function App() {
     () => (log === null ? null : stateAt(log, turn)),
     [log, turn],
   );
+  const turns = useMemo(() => (log === null ? [] : byTurn(log).map((r) => r.turn)), [log]);
 
   return (
     <main style={{ fontFamily: 'system-ui, sans-serif', padding: 16, maxWidth: 1400 }}>
@@ -56,12 +62,15 @@ export function App() {
         </label>
       </p>
       {error !== null && <p style={{ color: 'crimson' }}>{error}</p>}
-      {runs !== null && (
+      {runs !== null && runId === null && <Runs runs={runs} onSelect={setRunId} />}
+      {runs !== null && runId !== null && (
         <p>
+          <button type="button" onClick={() => setRunId(null)}>
+            all runs
+          </button>{' '}
           <label>
             Run{' '}
-            <select value={runId ?? ''} onChange={(e) => setRunId(e.target.value || null)}>
-              <option value="">choose a run</option>
+            <select value={runId} onChange={(e) => setRunId(e.target.value || null)}>
               {runs.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.experiment_id} seed {r.seed} ({r.status}, turn {r.turn ?? '-'}) {r.id}
@@ -88,7 +97,7 @@ export function App() {
             phase {state.phase.kind}
           </p>
           <nav style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            {(['contracts', 'messages', 'company'] as const).map((v) => (
+            {VIEWS.map((v) => (
               <button
                 key={v}
                 type="button"
@@ -99,11 +108,14 @@ export function App() {
               </button>
             ))}
           </nav>
-          {view === 'contracts' && <Contracts state={state} />}
-          {view === 'messages' && <Messages state={state} turn={turn} />}
+          {view === 'world' && <World log={log} state={state} turn={turn} />}
+          {view === 'leaderboard' && <Leaderboard log={log} turn={turn} />}
+          {view === 'contracts' && <Contracts log={log} state={state} turn={turn} />}
+          {view === 'messages' && <Messages state={state} turn={turn} turns={turns} />}
           {view === 'company' && runId !== null && (
             <Company log={log} state={state} turn={turn} token={token} runId={runId} />
           )}
+          {view === 'cost' && runId !== null && <Cost token={token} runId={runId} />}
         </>
       )}
     </main>

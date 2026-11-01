@@ -10,9 +10,7 @@ import { Cash, FinalGood, Good, Inventory, Qty, Role, Round, Turn } from './worl
 export const Reputation = z.object({
   completed: Qty,
   defaulted: Qty,
-  cured: Qty,
   value_defaulted: Cash,
-  value_cured: Cash,
 });
 export type Reputation = z.infer<typeof Reputation>;
 
@@ -57,7 +55,7 @@ export const Observation = z.object({
       }),
     )
     .nullable(),
-  /** The reference price of every good: the base for scrap, escrow fees, and the end inventory value. */
+  /** The reference price of every good: the base for scrap, penalties, and the end inventory value. */
   reference_prices: z.record(Good, Cash),
   /** Everyone still in the game. `model` is null unless the model identity knob is `visible`. */
   companies: z.array(

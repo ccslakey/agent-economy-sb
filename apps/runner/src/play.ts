@@ -88,7 +88,6 @@ export type CompanySummary = {
   bankrupt_turn: number | null;
   completed: number;
   defaulted: number;
-  cured: number;
   /** Distinct companies that accepted a contract with this one at or after `lateTurn`. */
   late_counterparties: number;
 };
@@ -108,8 +107,7 @@ export function summarize(result: PlayResult, lateTurn = 15): Summary {
         const acceptedTurn =
           status.status === 'active' ||
           status.status === 'completed' ||
-          status.status === 'defaulted' ||
-          status.status === 'cured'
+          status.status === 'defaulted'
             ? status.accepted_turn
             : null;
         if (acceptedTurn === null || acceptedTurn < lateTurn) continue;
@@ -124,7 +122,6 @@ export function summarize(result: PlayResult, lateTurn = 15): Summary {
         bankrupt_turn: c.standing.kind === 'bankrupt' ? c.standing.turn : null,
         completed: rep.completed,
         defaulted: rep.defaulted,
-        cured: rep.cured,
         late_counterparties: late.size,
       };
     });

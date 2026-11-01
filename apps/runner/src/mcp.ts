@@ -72,7 +72,7 @@ export function buildMcpServer(client: GameClient): McpServer {
     'contracts',
     {
       description:
-        'Your contracts with full terms and status, optionally filtered by status: proposed, active, completed, defaulted, cured, rejected, withdrawn, expired.',
+        'Your contracts with full terms and status, optionally filtered by status: proposed, active, completed, defaulted, rejected, withdrawn, expired.',
       inputSchema: { status: z.string().optional() },
     },
     ({ status }) =>

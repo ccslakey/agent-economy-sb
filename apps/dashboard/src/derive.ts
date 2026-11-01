@@ -1,5 +1,13 @@
 import { apply, initialState, reputationOf, scoreOf } from '@agent-economy/engine';
-import type { Company, CompanyId, Event, EventOf, RunState } from '@agent-economy/schema';
+import type {
+  Company,
+  CompanyId,
+  Event,
+  EventOf,
+  FinalGood,
+  Good,
+  RunState,
+} from '@agent-economy/schema';
 
 // Everything the inspector shows is a fold over the event log, done in the browser. The turn
 // scrubber is "fold up to here". No projection tables are involved.
@@ -26,6 +34,57 @@ export function lastTurn(log: Log): number {
   return log.rest.at(-1)?.turn ?? 1;
 }
 
+export type TurnRow = {
+  turn: number;
+  /** State after this turn's operations. */
+  state: RunState;
+  /** Units extracted or produced during the turn, by good. */
+  output: Partial<Record<Good, number>>;
+  /** Cash destroyed by penalties during the turn. */
+  penalties: number;
+  /** Contract lifecycle events during the turn. */
+  contracts: Record<ContractMove, number>;
+};
+
+export const CONTRACT_MOVES = ['proposed', 'accepted', 'completed', 'defaulted'] as const;
+export type ContractMove = (typeof CONTRACT_MOVES)[number];
+const noMoves = (): Record<ContractMove, number> => ({
+  proposed: 0,
+  accepted: 0,
+  completed: 0,
+  defaulted: 0,
+});
+
+/** One row per closed turn. The final turn closes with `run_ended` instead of `turn_closed`. */
+export function byTurn(log: Log): TurnRow[] {
+  const rows: TurnRow[] = [];
+  let state = initialState(log.started);
+  let output: Partial<Record<Good, number>> = {};
+  let penalties = 0;
+  let contracts = noMoves();
+  for (const event of log.rest) {
+    state = apply(state, event);
+    if (event.type === 'extraction_completed' || event.type === 'production_completed') {
+      output[event.payload.good] = (output[event.payload.good] ?? 0) + event.payload.qty;
+    } else if (event.type === 'penalty_charged') {
+      penalties += event.payload.amount;
+    } else if (
+      event.type === 'contract_proposed' ||
+      event.type === 'contract_accepted' ||
+      event.type === 'contract_completed' ||
+      event.type === 'contract_defaulted'
+    ) {
+      contracts[event.type.slice('contract_'.length) as ContractMove] += 1;
+    } else if (event.type === 'turn_closed' || event.type === 'run_ended') {
+      rows.push({ turn: event.turn, state, output, penalties, contracts });
+      output = {};
+      penalties = 0;
+      contracts = noMoves();
+    }
+  }
+  return rows;
+}
+
 export type CompanySnapshot = {
   turn: number;
   cash: number;
@@ -36,30 +95,98 @@ export type CompanySnapshot = {
 
 /** One row per turn for a company: cash, inventory, and score after that turn's operations. */
 export function snapshots(log: Log, company: CompanyId): CompanySnapshot[] {
-  const rows: CompanySnapshot[] = [];
-  let state = initialState(log.started);
-  let turn = state.turn;
-  const push = (s: RunState) => {
-    const c = s.companies[company];
-    if (c === undefined) return;
-    rows.push({
+  return byTurn(log).flatMap(({ turn, state }) => {
+    const c = state.companies[company];
+    if (c === undefined) return [];
+    return [
+      {
+        turn,
+        cash: c.cash,
+        inventory: c.inventory,
+        score: scoreOf(state, c),
+        standing: c.standing.kind,
+      },
+    ];
+  });
+}
+
+export type WorldRow = {
+  turn: number;
+  /** Cash across every company, overdrafts included. */
+  money: number;
+  solvent: number;
+  /** NPC clearing price per final good, absent when nothing cleared. */
+  prices: Partial<Record<FinalGood, number>>;
+  output: Partial<Record<Good, number>>;
+  groves: number;
+  penalties: number;
+  shocks: string[];
+};
+
+export function worldRows(log: Log): WorldRow[] {
+  return byTurn(log).map(({ turn, state, output, penalties }) => {
+    const companies = Object.values(state.companies);
+    const prices: Partial<Record<FinalGood, number>> = {};
+    for (const clear of state.market.clears)
+      if (clear.turn === turn) prices[clear.good] = clear.price;
+    return {
       turn,
-      cash: c.cash,
-      inventory: c.inventory,
-      score: scoreOf(s, c),
-      standing: c.standing.kind,
-    });
-  };
-  for (const event of log.rest) {
-    if (event.type === 'turn_closed' || event.type === 'run_ended') {
-      state = apply(state, event);
-      push(state);
-      turn = state.turn;
-      continue;
-    }
-    state = apply(state, event);
-  }
-  return rows;
+      money: companies.reduce((sum, c) => sum + c.cash, 0),
+      solvent: companies.filter((c) => c.standing.kind !== 'bankrupt').length,
+      prices,
+      output,
+      groves: Object.values(state.groves).reduce((sum, g) => sum + g.stock, 0),
+      penalties,
+      shocks: state.shocks.map((s) => s.shock.kind),
+    };
+  });
+}
+
+export type LeaderboardSeries = {
+  company: Company;
+  driver: string;
+  /** Net worth after each turn, aligned with `turns`. */
+  scores: number[];
+};
+
+/** Every company's net worth over the game, sorted by final score. */
+export function leaderboard(log: Log): { turns: number[]; series: LeaderboardSeries[] } {
+  const rows = byTurn(log);
+  const last = rows.at(-1);
+  if (last === undefined) return { turns: [], series: [] };
+  const series = Object.values(last.state.companies).map((company) => ({
+    company,
+    driver: driverLabel(last.state, company.id),
+    scores: rows.map((r) => {
+      const c = r.state.companies[company.id];
+      return c === undefined ? 0 : scoreOf(r.state, c);
+    }),
+  }));
+  series.sort((a, b) => (b.scores.at(-1) ?? 0) - (a.scores.at(-1) ?? 0));
+  return { turns: rows.map((r) => r.turn), series };
+}
+
+/** The first turn from which the current leader has led every turn since. */
+export function leaderSince(
+  turns: number[],
+  series: LeaderboardSeries[],
+  upTo: number,
+): number | null {
+  const index = turns.indexOf(upTo);
+  if (index < 0) return null;
+  const leaderAt = (i: number) =>
+    series.reduce((best, s) => ((s.scores[i] ?? 0) > (best.scores[i] ?? 0) ? s : best)).company.id;
+  const leader = leaderAt(index);
+  let since = index;
+  while (since > 0 && leaderAt(since - 1) === leader) since -= 1;
+  return turns[since] ?? null;
+}
+
+/** The model for an LLM company, the strategy for a bot. */
+export function driverLabel(state: RunState, company: CompanyId): string {
+  const entry = state.config.population.find((p) => p.id === company);
+  if (entry === undefined) return '';
+  return entry.driver.kind === 'llm' ? entry.driver.model : entry.driver.strategy;
 }
 
 /** Events a company took part in: as actor, as a contract party, or as a message recipient. */
@@ -90,10 +217,7 @@ export function companyRows(state: RunState) {
       company: c,
       score: scoreOf(state, c),
       reputation: reputationOf(state, c),
-      strategy: (() => {
-        const entry = state.config.population.find((p) => p.id === c.id);
-        return entry?.driver.kind === 'llm' ? entry.driver.model : (entry?.driver.strategy ?? '');
-      })(),
+      strategy: driverLabel(state, c.id),
     }));
 }
 
@@ -114,22 +238,20 @@ export function describe(event: Event): string {
       return `withdrew ${event.payload.contract}`;
     case 'contract_expired':
       return `${event.payload.contract} expired`;
-    case 'delivery_made':
-      return `delivered ${event.payload.qty} ${event.payload.good} on ${event.payload.contract}`;
-    case 'payment_made':
-      return `paid ${event.payload.amount} on ${event.payload.contract}`;
     case 'escrow_deposited':
-      return `deposited ${event.payload.units} into escrow on ${event.payload.contract}`;
+      return `deposited ${event.payload.units} on ${event.payload.contract}`;
     case 'escrow_released':
-      return `escrow released on ${event.payload.contract}`;
+      return `${event.payload.contract} released to both sides`;
     case 'escrow_refunded':
-      return `escrow refunded on ${event.payload.contract}`;
+      return `${event.payload.party} refunded on ${event.payload.contract}`;
+    case 'escrow_forfeited':
+      return `${event.payload.party} forfeited deposits on ${event.payload.contract}`;
+    case 'penalty_charged':
+      return `${event.payload.party} charged ${event.payload.amount} on ${event.payload.contract}`;
     case 'contract_completed':
       return `${event.payload.contract} completed`;
     case 'contract_defaulted':
       return `${event.payload.contract} defaulted by ${event.payload.by.join(' and ')} for ${event.payload.unmet_value}`;
-    case 'contract_cured':
-      return `${event.payload.contract} cured for ${event.payload.cured_value}`;
     case 'transfer_made':
       return `transferred ${event.payload.what.kind === 'cash' ? `${event.payload.what.amount} cash` : `${event.payload.what.qty} ${event.payload.what.good}`} to ${event.payload.to}`;
     case 'message_posted':
@@ -181,4 +303,16 @@ export function describe(event: Event): string {
       return _exhaustive;
     }
   }
+}
+
+/** Public and private message counts per turn, from the state's message list. */
+export function messageRows(
+  state: RunState,
+  turns: number[],
+): { turn: number; public: number; dm: number }[] {
+  return turns.map((turn) => ({
+    turn,
+    public: state.messages.filter((m) => m.turn === turn && m.channel.kind === 'public').length,
+    dm: state.messages.filter((m) => m.turn === turn && m.channel.kind === 'dm').length,
+  }));
 }

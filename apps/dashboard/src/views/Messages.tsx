@@ -1,9 +1,21 @@
 import type { RunState } from '@agent-economy/schema';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { messageRows } from '../derive.ts';
+import { LineChart } from './Chart.tsx';
 import { cell } from './Contracts.tsx';
 
-export function Messages({ state, turn }: { state: RunState; turn: number }) {
+export function Messages({
+  state,
+  turn,
+  turns,
+}: {
+  state: RunState;
+  turn: number;
+  /** Every closed turn, so quiet turns still get a zero. */
+  turns: number[];
+}) {
   const [onlyTurn, setOnlyTurn] = useState(false);
+  const volume = useMemo(() => messageRows(state, turns), [state, turns]);
   const [participant, setParticipant] = useState('');
   // Messages carry no id, so their position in the log is their identity.
   const rows = state.messages
@@ -17,6 +29,15 @@ export function Messages({ state, turn }: { state: RunState; turn: number }) {
     );
   return (
     <section>
+      <LineChart
+        title="Messages per turn"
+        x={turns}
+        marker={turn}
+        series={[
+          { label: 'public', points: volume.map((r) => r.public) },
+          { label: 'dm', points: volume.map((r) => r.dm) },
+        ]}
+      />
       <p>
         <label>
           <input

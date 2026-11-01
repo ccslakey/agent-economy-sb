@@ -1,14 +1,20 @@
+import { scoreOf } from '@agent-economy/engine';
 import { playBots, roster } from '@agent-economy/runner';
 import { CompanyId } from '@agent-economy/schema';
 import { expect, describe as group, it } from 'vitest';
 import {
+  byTurn,
   companyRows,
   describe,
   lastTurn,
+  leaderboard,
+  leaderSince,
+  messageRows,
   snapshots,
   splitLog,
   stateAt,
   timeline,
+  worldRows,
 } from './derive.ts';
 
 // The inspector's data is a fold over the log. These checks play a short bot game and verify the
@@ -33,6 +39,46 @@ group('derive', () => {
     const rows = snapshots(log, CompanyId.parse('c01'));
     expect(rows.map((r) => r.turn)).toEqual([1, 2, 3, 4]);
     expect(rows.at(-1)?.cash).toBe(played.state.companies[CompanyId.parse('c01')]?.cash);
+  });
+  it('sums the world per turn: money, output, groves, prices where a good cleared', () => {
+    if (log === null) throw new Error('no log');
+    const rows = worldRows(log);
+    expect(rows.map((r) => r.turn)).toEqual([1, 2, 3, 4]);
+    const last = rows.at(-1);
+    const cash = Object.values(played.state.companies).reduce((sum, c) => sum + c.cash, 0);
+    expect(last?.money).toBe(cash);
+    expect(last?.solvent).toBe(12);
+    expect(rows[0]?.output.ore).toBeGreaterThan(0);
+    expect(rows[0]?.groves).toBeGreaterThan(0);
+    const cleared = played.state.market.clears.find((c) => c.turn === 4 && c.qty > 0);
+    if (cleared !== undefined) expect(last?.prices[cleared.good]).toBe(cleared.price);
+    expect(byTurn(log).at(-1)?.state).toEqual(played.state);
+  });
+  it('counts contract moves and messages per turn', () => {
+    if (log === null) throw new Error('no log');
+    const rows = byTurn(log);
+    const proposed = rows.reduce((sum, r) => sum + r.contracts.proposed, 0);
+    expect(proposed).toBe(Object.keys(played.state.contracts).length);
+    const volume = messageRows(
+      played.state,
+      rows.map((r) => r.turn),
+    );
+    expect(volume.map((v) => v.turn)).toEqual([1, 2, 3, 4]);
+    expect(volume.reduce((sum, v) => sum + v.public + v.dm, 0)).toBe(played.state.messages.length);
+  });
+  it('ranks companies by net worth with one score per turn and names the leader since', () => {
+    if (log === null) throw new Error('no log');
+    const board = leaderboard(log);
+    expect(board.turns).toEqual([1, 2, 3, 4]);
+    expect(board.series).toHaveLength(12);
+    expect(board.series.every((s) => s.scores.length === 4)).toBe(true);
+    const top = board.series[0];
+    if (top === undefined) throw new Error('empty board');
+    expect(top.scores.at(-1)).toBe(scoreOf(played.state, top.company));
+    expect(top.driver).toBe('honest_trader');
+    const since = leaderSince(board.turns, board.series, 4);
+    expect(since).not.toBeNull();
+    expect(since ?? 0).toBeLessThanOrEqual(4);
   });
   it('builds a timeline of the events a company took part in, each with a description', () => {
     if (log === null) throw new Error('no log');

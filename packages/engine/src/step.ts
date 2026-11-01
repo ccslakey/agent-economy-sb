@@ -32,14 +32,7 @@ import {
 } from '@agent-economy/schema';
 import { apply } from './fold.ts';
 import type { Rng } from './rng.ts';
-import {
-  capacityOf,
-  demandFactor,
-  escrowFeePerSide,
-  partyOf,
-  remainingValue,
-  scoreOf,
-} from './world.ts';
+import { capacityOf, demandFactor, partyOf, penaltyFor, remainingValue, scoreOf } from './world.ts';
 
 // state + input + rng -> events. Pure, no IO. The caller appends the events and folds them.
 
@@ -225,27 +218,13 @@ function validate(state: RunState, company: Company, action: Action): ActionErro
       if (counterparty === undefined || counterparty.standing.kind === 'bankrupt') {
         return { code: 'INVALID_ACTION', reason: `no active company ${action.counterparty}` };
       }
-      if (action.escrow && state.config.knobs.enforcement === 'none') {
-        return { code: 'INVALID_ACTION', reason: 'escrow is not available in this run' };
-      }
       const past = action.obligations.find((o) => o.due_turn < state.turn);
       if (past !== undefined) {
         return { code: 'INVALID_ACTION', reason: `due turn ${past.due_turn} has passed` };
       }
       return null;
     }
-    case 'accept_contract': {
-      const error = proposalError(state, company, action.contract, 'counterparty');
-      const contract = state.contracts[action.contract];
-      if (error !== null || contract === undefined) return error;
-      const fee = escrowFeePerSide(state, contract);
-      const proposer = state.companies[contract.proposer];
-      if (company.cash < fee) return { code: 'INSUFFICIENT_CASH', reason: `escrow fee is ${fee}` };
-      if (proposer === undefined || proposer.cash < fee) {
-        return { code: 'INSUFFICIENT_CASH', reason: `the proposer cannot cover the ${fee} fee` };
-      }
-      return null;
-    }
+    case 'accept_contract':
     case 'reject_contract':
       return proposalError(state, company, action.contract, 'counterparty');
     case 'withdraw_contract':
@@ -350,7 +329,7 @@ function fulfilmentError(
   const side = partyOf(contract, company.id);
   if (side === null)
     return { code: 'NOT_A_PARTY', reason: `${company.id} is not a party to ${id}` };
-  if (contract.status.status !== 'active' && contract.status.status !== 'defaulted') {
+  if (contract.status.status !== 'active') {
     return { code: 'CONTRACT_NOT_ACTIVE', reason: `${id} is ${contract.status.status}` };
   }
   const obligation = contract.obligations[index];
@@ -421,19 +400,13 @@ function resolveAction(
       });
       return;
     }
-    case 'accept_contract': {
-      const contract = current().contracts[action.contract];
-      if (contract === undefined) return;
+    case 'accept_contract':
       emit({
         type: 'contract_accepted',
-        payload: {
-          contract: action.contract,
-          escrow_fee_per_side: escrowFeePerSide(current(), contract),
-        },
+        payload: { contract: action.contract },
         actor: company.id,
       });
       return;
-    }
     case 'reject_contract':
       emit({
         type: 'contract_rejected',
@@ -454,30 +427,11 @@ function resolveAction(
       const obligation = contract?.obligations[action.obligation];
       if (contract === undefined || obligation === undefined) return;
       const units = action.type === 'deliver' ? action.qty : action.amount;
-      if (contract.escrow && contract.status.status === 'active') {
-        emit({
-          type: 'escrow_deposited',
-          payload: { contract: action.contract, obligation: action.obligation, units },
-          actor: company.id,
-        });
-      } else if (obligation.kind === 'goods') {
-        emit({
-          type: 'delivery_made',
-          payload: {
-            contract: action.contract,
-            obligation: action.obligation,
-            good: obligation.good,
-            qty: units,
-          },
-          actor: company.id,
-        });
-      } else {
-        emit({
-          type: 'payment_made',
-          payload: { contract: action.contract, obligation: action.obligation, amount: units },
-          actor: company.id,
-        });
-      }
+      emit({
+        type: 'escrow_deposited',
+        payload: { contract: action.contract, obligation: action.obligation, units },
+        actor: company.id,
+      });
       settle(current, emit, action.contract);
       return;
     }
@@ -509,22 +463,54 @@ function resolveAction(
   }
 }
 
-/** After a delivery or payment: close the contract if every obligation is now met. */
+/** After a deposit: when every obligation is in, release every deposit to its receiver and complete. */
 function settle(current: () => RunState, emit: (body: Body) => void, id: ContractId): void {
   const s = current();
   const contract = s.contracts[id];
-  if (contract === undefined) return;
+  if (contract === undefined || contract.status.status !== 'active') return;
   if (contract.obligations.some((o) => remainingValue(s, o) > 0)) return;
-  if (contract.status.status === 'active') {
-    if (contract.escrow) emit({ type: 'escrow_released', payload: { contract: id }, actor: null });
-    emit({ type: 'contract_completed', payload: { contract: id }, actor: null });
-  } else if (contract.status.status === 'defaulted') {
-    emit({
-      type: 'contract_cured',
-      payload: { contract: id, cured_value: contract.status.unmet_value },
-      actor: null,
-    });
+  emit({ type: 'escrow_released', payload: { contract: id }, actor: null });
+  emit({ type: 'contract_completed', payload: { contract: id }, actor: null });
+}
+
+/**
+ * Close an active contract as defaulted. A party that performed gets its deposits back. A
+ * failing party loses its deposits and pays a share of its side's value as a penalty.
+ */
+function closeAsDefaulted(
+  current: () => RunState,
+  emit: (body: Body) => void,
+  id: ContractId,
+  failing: readonly Party[],
+): void {
+  const s = current();
+  const contract = s.contracts[id];
+  if (contract === undefined || contract.status.status !== 'active') return;
+  const [first, ...rest] = failing;
+  if (first === undefined) return;
+  const unmetValue = contract.obligations
+    .filter((o) => failing.includes(o.by))
+    .reduce((sum, o) => sum + remainingValue(s, o), 0);
+  const penalties = new Map<Party, number>();
+  for (const party of ['proposer', 'counterparty'] as const) {
+    if (failing.includes(party)) penalties.set(party, penaltyFor(s, contract, party));
   }
+  for (const party of ['proposer', 'counterparty'] as const) {
+    if (!failing.includes(party)) {
+      emit({ type: 'escrow_refunded', payload: { contract: id, party }, actor: null });
+      continue;
+    }
+    emit({ type: 'escrow_forfeited', payload: { contract: id, party }, actor: null });
+    const amount = penalties.get(party) ?? 0;
+    if (amount > 0) {
+      emit({ type: 'penalty_charged', payload: { contract: id, party, amount }, actor: null });
+    }
+  }
+  emit({
+    type: 'contract_defaulted',
+    payload: { contract: id, by: [first, ...rest], unmet_value: unmetValue },
+    actor: null,
+  });
 }
 
 // The operations step, in the spec's fixed order. Each phase reads the state as the previous
@@ -602,7 +588,7 @@ function companyChanges(current: () => RunState, emit: (body: Body) => void, rng
 
 const byContractId = (a: Contract, b: Contract) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
-/** Expire stale proposals, then fire defaults for obligations due this turn. Under `enforced`, the engine fulfils what it can first. */
+/** Expire stale proposals, then settle every active contract with an obligation still unmet at the end of its due turn. */
 function contracts(current: () => RunState, emit: (body: Body) => void): void {
   const turn = current().turn;
   for (const contract of Object.values(current().contracts).sort(byContractId)) {
@@ -610,64 +596,14 @@ function contracts(current: () => RunState, emit: (body: Body) => void): void {
       emit({ type: 'contract_expired', payload: { contract: contract.id }, actor: null });
     }
   }
-  if (current().config.knobs.enforcement === 'enforced') enforce(current, emit);
   for (const contract of Object.values(current().contracts).sort(byContractId)) {
     if (contract.status.status !== 'active') continue;
     const s = current();
-    const latest = Math.max(...contract.obligations.map((o) => o.due_turn));
-    if (contract.escrow && latest > turn) continue;
-    const due = contract.obligations.filter(
-      (o) => (contract.escrow || o.due_turn <= turn) && remainingValue(s, o) > 0,
-    );
-    const [first, ...rest] = due;
-    if (first === undefined) continue;
-    const by: [Party, ...Party[]] = [first.by];
-    for (const o of rest) if (!by.includes(o.by)) by.push(o.by);
-    if (contract.escrow) {
-      emit({ type: 'escrow_refunded', payload: { contract: contract.id }, actor: null });
-    }
-    emit({
-      type: 'contract_defaulted',
-      payload: {
-        contract: contract.id,
-        by,
-        unmet_value: due.reduce((sum, o) => sum + remainingValue(s, o), 0),
-      },
-      actor: null,
-    });
-  }
-}
-
-function enforce(current: () => RunState, emit: (body: Body) => void): void {
-  const turn = current().turn;
-  for (const contract of Object.values(current().contracts).sort(byContractId)) {
-    if (contract.status.status !== 'active' || contract.escrow) continue;
-    contract.obligations.forEach((o, index) => {
-      const s = current();
-      const remaining = remainingValue(s, o);
-      if (o.due_turn > turn || remaining <= 0) return;
-      const party = o.by === 'proposer' ? contract.proposer : contract.counterparty;
-      const payer = s.companies[party];
-      if (payer === undefined) return;
-      if (o.kind === 'goods') {
-        const units = o.qty - o.met;
-        if ((payer.inventory[o.good] ?? 0) < units) return;
-        emit({
-          type: 'delivery_made',
-          payload: { contract: contract.id, obligation: index, good: o.good, qty: units },
-          actor: party,
-        });
-      } else {
-        const amount = o.amount - o.met;
-        if (payer.cash < amount) return;
-        emit({
-          type: 'payment_made',
-          payload: { contract: contract.id, obligation: index, amount },
-          actor: party,
-        });
-      }
-      settle(current, emit, contract.id);
-    });
+    const due = contract.obligations.filter((o) => o.due_turn <= turn && remainingValue(s, o) > 0);
+    if (due.length === 0) continue;
+    const failing: Party[] = [];
+    for (const o of due) if (!failing.includes(o.by)) failing.push(o.by);
+    closeAsDefaulted(current, emit, contract.id, failing);
   }
 }
 
@@ -745,17 +681,7 @@ function bankruptcy(current: () => RunState, emit: (body: Body) => void): void {
     }
     for (const k of active) {
       const side = partyOf(k, c.id);
-      if (side === null) continue;
-      const owed = k.obligations.filter((o) => o.by === side);
-      emit({
-        type: 'contract_defaulted',
-        payload: {
-          contract: k.id,
-          by: [side],
-          unmet_value: owed.reduce((sum, o) => sum + remainingValue(current(), o), 0),
-        },
-        actor: null,
-      });
+      if (side !== null) closeAsDefaulted(current, emit, k.id, [side]);
     }
   }
 }
