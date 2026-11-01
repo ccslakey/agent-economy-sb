@@ -26,7 +26,13 @@ let runId = args.get('run');
 if (runId === undefined) {
   const configPath = args.get('config');
   if (configPath === undefined) throw new Error('pass --run <id> or --config <file>');
-  const config = parseYaml(await readFile(configPath, 'utf8')) as unknown;
+  const loaded = parseYaml(await readFile(configPath, 'utf8')) as Record<string, unknown>;
+  // The runner advances rounds itself once every session has ended, so a session still running
+  // when the last batch lands cannot act again in the next round.
+  const config = {
+    ...loaded,
+    limits: { ...(loaded.limits as object | undefined), auto_advance: false },
+  };
   const response = await fetch(`${api}/admin/runs`, {
     method: 'POST',
     headers: { 'x-admin-token': adminToken, 'content-type': 'application/json' },

@@ -167,7 +167,7 @@ A run is fully described by one config file plus a seed. All engine randomness (
 - `population`: one entry per company with name, role, model, effort, harness version, and prompt variant. Names come from a pool unrelated to the model, so a name never hints at the model.
 - `economy`: every parameter in the Economy parameters table
 - `knobs`: the experiment variables below
-- `limits`: round tool-call budget, wall-clock backstop, notes size cap (default 4,000 characters), message caps per round, and max concurrent sessions
+- `limits`: round tool-call budget, wall-clock backstop, notes size cap (default 4,000 characters), message caps per round, max concurrent sessions, and whether the API advances a round on its own once everyone has submitted. The runner turns auto-advance off so a session still running when the last batch lands cannot act again in the next round.
 
 **Experiment knobs**
 

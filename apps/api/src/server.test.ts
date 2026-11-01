@@ -154,6 +154,32 @@ describe('agent routes', () => {
     expect(ninth.json()).toMatchObject({ code: 'ROUND_CLOSED' });
   });
 
+  it('leaves the round open after every submission when auto_advance is off', async () => {
+    const store = new MemoryStore();
+    app = await buildServer({ store, adminToken: 'admin', docsDir, clock: frozenClock() });
+    const created = await api().inject({
+      method: 'POST',
+      url: '/admin/runs',
+      headers: { 'x-admin-token': 'admin' },
+      payload: { ...config, limits: { ...config.limits, auto_advance: false } },
+    });
+    const { run_id, tokens } = created.json() as { run_id: string; tokens: Record<string, string> };
+    for (const company of ['c01', 'c05']) {
+      await api().inject({
+        method: 'POST',
+        url: '/v1/actions',
+        headers: { authorization: `Bearer ${tokens[company] ?? ''}` },
+        payload: { actions: [] },
+      });
+    }
+    const still = await api().inject({
+      method: 'GET',
+      url: `/admin/runs/${run_id}/state`,
+      headers: { 'x-admin-token': 'admin' },
+    });
+    expect(still.json()).toMatchObject({ turn: 1, phase: { kind: 'round', round: 1 } });
+  });
+
   it('advances on its own once every company has submitted, and on the wall clock', async () => {
     const run = await startRun();
     await api().inject({
