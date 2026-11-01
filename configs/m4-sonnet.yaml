@@ -1,0 +1,53 @@
+# M4, the first LLM run: one model, six companies, a 15-turn fixed game.
+# Measures minutes per round with concurrent sessions and quota consumed per run.
+#   ADMIN_TOKEN=... node apps/runner/src/run.ts --api http://localhost:3000 --config configs/m4-sonnet.yaml
+seed: 101
+experiment_id: m4-sonnet
+population:
+  - {
+      id: c01,
+      name: Ironreach,
+      role: miner,
+      driver:
+        { kind: llm, model: sonnet, effort: low, harness_version: 1, prompt_variant: neutral },
+    }
+  - {
+      id: c03,
+      name: Fellwood,
+      role: logger,
+      driver:
+        { kind: llm, model: sonnet, effort: low, harness_version: 1, prompt_variant: neutral },
+    }
+  - {
+      id: c05,
+      name: Emberworks,
+      role: smelter,
+      driver:
+        { kind: llm, model: sonnet, effort: low, harness_version: 1, prompt_variant: neutral },
+    }
+  - {
+      id: c07,
+      name: Birchline Mills,
+      role: mill,
+      driver:
+        { kind: llm, model: sonnet, effort: low, harness_version: 1, prompt_variant: neutral },
+    }
+  - {
+      id: c09,
+      name: Anvilgate,
+      role: toolmaker,
+      driver:
+        { kind: llm, model: sonnet, effort: low, harness_version: 1, prompt_variant: neutral },
+    }
+  - {
+      id: c11,
+      name: Hearthstead,
+      role: furniture_maker,
+      driver:
+        { kind: llm, model: sonnet, effort: low, harness_version: 1, prompt_variant: neutral },
+    }
+knobs:
+  horizon: { kind: fixed, last_turn: 15 }
+limits:
+  round_wall_clock_seconds: 900
+  max_concurrent_sessions: 6

@@ -1,8 +1,8 @@
-import { type CompanyId, Event, RunConfig, RunId } from '@agent-economy/schema';
+import { CompanyId, Event, RunConfig, RunId } from '@agent-economy/schema';
 import { type Generated, type JSONColumnType, Kysely, PostgresDialect, sql } from 'kysely';
 import pg from 'pg';
 import { z } from 'zod';
-import type { RunRow, RunStatus, Store } from './store.ts';
+import type { RunRow, RunStatus, Store, TraceRow } from './store.ts';
 
 // Postgres through Kysely: typed SQL with the event log in plain sight. Rows are parsed back
 // through the schema package on the way out, so a bad row fails loudly instead of folding.
@@ -37,9 +37,46 @@ type NotesTable = {
   updated_at: Generated<Date>;
 };
 
-type Database = { runs: RunsTable; events: EventsTable; notes: NotesTable };
+type TracesTable = {
+  id: string;
+  run_id: string;
+  company_id: string;
+  turn: number;
+  round: number | null;
+  kind: string;
+  session_id: string | null;
+  model: string | null;
+  result: JSONColumnType<Record<string, unknown>>;
+  tokens_in: number;
+  tokens_out: number;
+  cost_usd: number;
+  duration_ms: number;
+  created_at: Generated<Date>;
+};
+
+type Database = {
+  runs: RunsTable;
+  events: EventsTable;
+  notes: NotesTable;
+  agent_traces: TracesTable;
+};
 
 const Status = z.enum(['running', 'paused', 'ended']);
+const Trace = z.object({
+  id: z.string(),
+  run_id: RunId,
+  company: CompanyId,
+  turn: z.number().int(),
+  round: z.number().int().nullable(),
+  kind: z.enum(['round', 'farming']),
+  session_id: z.string().nullable(),
+  model: z.string().nullable(),
+  result: z.record(z.string(), z.unknown()),
+  tokens_in: z.number().int(),
+  tokens_out: z.number().int(),
+  cost_usd: z.number(),
+  duration_ms: z.number().int(),
+});
 const Tokens = z.record(z.string(), z.string());
 
 export class PostgresStore implements Store {
@@ -85,6 +122,51 @@ export class PostgresStore implements Store {
         updated_at timestamptz not null default now(),
         primary key (run_id, company_id)
       )`.execute(this.db);
+    await sql`
+      create table if not exists agent_traces (
+        id text primary key,
+        run_id text not null references runs(id),
+        company_id text not null,
+        turn integer not null,
+        round integer,
+        kind text not null,
+        session_id text,
+        model text,
+        result jsonb not null,
+        tokens_in integer not null,
+        tokens_out integer not null,
+        cost_usd double precision not null,
+        duration_ms integer not null,
+        created_at timestamptz not null default now()
+      )`.execute(this.db);
+  }
+
+  async putTrace(trace: TraceRow): Promise<void> {
+    await this.db
+      .insertInto('agent_traces')
+      .values({
+        id: trace.id,
+        run_id: trace.run_id,
+        company_id: trace.company,
+        turn: trace.turn,
+        round: trace.round,
+        kind: trace.kind,
+        session_id: trace.session_id,
+        model: trace.model,
+        result: JSON.stringify(trace.result),
+        tokens_in: trace.tokens_in,
+        tokens_out: trace.tokens_out,
+        cost_usd: trace.cost_usd,
+        duration_ms: trace.duration_ms,
+      })
+      .execute();
+  }
+
+  async listTraces(runId: RunId, company?: CompanyId): Promise<TraceRow[]> {
+    let query = this.db.selectFrom('agent_traces').selectAll().where('run_id', '=', runId);
+    if (company !== undefined) query = query.where('company_id', '=', company);
+    const rows = await query.orderBy('created_at').execute();
+    return rows.map((row) => Trace.parse({ ...row, company: row.company_id }));
   }
 
   async close(): Promise<void> {
