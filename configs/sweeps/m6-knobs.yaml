@@ -1,6 +1,7 @@
 # M6's first sweeps in one file, each paired by seed against the same baseline (the M4
 # penalty-regime config): enforcement on against off, the needs board on against off, and a
-# twelve-company roster with two sellers per role against the six-company one.
+# twelve-company roster with two sellers per role against the six-company one. The penalty
+# variants came after the first night: 0.75 destroyed about as much cash as trade created.
 #   ADMIN_TOKEN=... node apps/runner/src/sweep.ts --api http://localhost:3000 --sweep configs/sweeps/m6-knobs.yaml --concurrency 2
 experiment_id: m6-knobs
 seeds: [104, 105, 106]
@@ -57,6 +58,8 @@ variants:
   - { name: baseline }
   - { name: enforcement-off, knobs: { enforcement: "off" } }
   - { name: needs-board, knobs: { needs_board: "on" } }
+  - { name: penalty-50, economy: { default_penalty_fraction: 0.5 } }
+  - { name: penalty-25, economy: { default_penalty_fraction: 0.25 } }
   - name: twelve
     limits: { max_concurrent_sessions: 12 }
     population:
