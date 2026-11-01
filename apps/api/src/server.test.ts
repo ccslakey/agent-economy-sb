@@ -212,6 +212,33 @@ describe('agent routes', () => {
     expect(seen.json()).toMatchObject({ round: 3 });
   });
 
+  it('treats a persistent session waiting for the next round as passing this one', async () => {
+    const run = await startRun(new MemoryStore(), frozenClock(), {
+      ...config,
+      knobs: { ...config.knobs, context_persistence: 'persistent' },
+    });
+    await api().inject({
+      method: 'POST',
+      url: '/v1/actions',
+      headers: run.as('c01'),
+      payload: { actions: [] },
+    });
+    const waited = await api().inject({
+      method: 'GET',
+      url: '/v1/wait?turn=1&round=1&timeout_ms=0',
+      headers: run.as('c05'),
+    });
+    expect(waited.json()).toMatchObject({ status: 'round', turn: 1, round: 2 });
+    const again = await api().inject({
+      method: 'POST',
+      url: '/v1/actions',
+      headers: run.as('c05'),
+      payload: { actions: [] },
+    });
+    expect(again.statusCode).toBe(200);
+    expect(again.json()).toEqual({ results: [] });
+  });
+
   it('runs the operations step after round three and ends on the fixed last turn', async () => {
     const run = await startRun();
     await api().inject({
