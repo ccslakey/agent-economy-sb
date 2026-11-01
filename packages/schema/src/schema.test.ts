@@ -105,7 +105,6 @@ const actionFixtures: Record<ActionType, unknown> = {
   propose_contract: {
     type: 'propose_contract',
     counterparty: 'c02',
-    escrow: false,
     terms_text: '',
     obligations: [
       { kind: 'goods', by: 'proposer', good: 'ore', qty: 4, due_turn: 3 },
@@ -168,7 +167,6 @@ const env = (type: EventType, payload: unknown, actor: string | null = null) => 
 const terms = {
   proposer: 'c01',
   counterparty: 'c02',
-  escrow: true,
   terms_text: 'ore for cash',
   obligations: [{ kind: 'goods', by: 'proposer', good: 'ore', qty: 4, due_turn: 3 }],
 };
@@ -193,26 +191,21 @@ const eventFixtures: Record<EventType, unknown> = {
     'c01',
   ),
   contract_proposed: env('contract_proposed', { ...terms, contract: 'k1' }, 'c01'),
-  contract_accepted: env('contract_accepted', { contract: 'k1', escrow_fee_per_side: 2 }, 'c02'),
+  contract_accepted: env('contract_accepted', { contract: 'k1' }, 'c02'),
   contract_rejected: env('contract_rejected', { contract: 'k1' }, 'c02'),
   contract_withdrawn: env('contract_withdrawn', { contract: 'k1' }, 'c01'),
   contract_expired: env('contract_expired', { contract: 'k1' }),
-  delivery_made: env(
-    'delivery_made',
-    { contract: 'k1', obligation: 0, good: 'ore', qty: 4 },
-    'c01',
-  ),
-  payment_made: env('payment_made', { contract: 'k1', obligation: 1, amount: 60 }, 'c02'),
   escrow_deposited: env('escrow_deposited', { contract: 'k1', obligation: 0, units: 4 }, 'c01'),
   escrow_released: env('escrow_released', { contract: 'k1' }),
-  escrow_refunded: env('escrow_refunded', { contract: 'k1' }),
+  escrow_refunded: env('escrow_refunded', { contract: 'k1', party: 'proposer' }),
+  escrow_forfeited: env('escrow_forfeited', { contract: 'k1', party: 'counterparty' }),
+  penalty_charged: env('penalty_charged', { contract: 'k1', party: 'counterparty', amount: 45 }),
   contract_completed: env('contract_completed', { contract: 'k1' }),
   contract_defaulted: env('contract_defaulted', {
     contract: 'k1',
     by: ['proposer'],
     unmet_value: 60,
   }),
-  contract_cured: env('contract_cured', { contract: 'k1', cured_value: 60 }),
   transfer_made: env('transfer_made', { to: 'c02', what: { kind: 'cash', amount: 25 } }, 'c01'),
   message_posted: env('message_posted', { text: 'selling ore' }, 'c01'),
   dm_sent: env('dm_sent', { to: 'c02', text: 'deal?' }, 'c01'),

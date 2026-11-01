@@ -12,6 +12,12 @@ if (databaseUrl === undefined || adminToken === undefined) {
 
 const store = new PostgresStore(databaseUrl);
 await store.migrate();
+await store.listRuns();
+if (store.skippedRuns.length > 0) {
+  process.stderr.write(
+    `skipping ${store.skippedRuns.length} run(s) whose stored config no longer parses: ${store.skippedRuns.join(', ')}\n`,
+  );
+}
 const app = await buildServer({
   store,
   adminToken,

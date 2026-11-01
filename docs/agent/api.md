@@ -22,7 +22,7 @@ Each action is an object with a `type` and its fields. Unknown fields are reject
 ```json
 { "type": "post_message", "text": "Selling ore, 14 each" }
 { "type": "send_dm", "to": "c05", "text": "4 ore for 60?" }
-{ "type": "propose_contract", "counterparty": "c05", "escrow": false, "terms_text": "ore now, cash next turn",
+{ "type": "propose_contract", "counterparty": "c05", "terms_text": "ore now, cash next turn",
   "obligations": [
     { "kind": "goods", "by": "proposer", "good": "ore", "qty": 4, "due_turn": 3 },
     { "kind": "cash", "by": "counterparty", "amount": 60, "due_turn": 4 }

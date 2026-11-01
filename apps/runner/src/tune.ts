@@ -72,7 +72,7 @@ if (detail !== undefined) {
     lines.push('', `seed ${detail}: turns=${s.turns}`);
     for (const c of s.companies) {
       lines.push(
-        `  ${c.id} ${c.role.padEnd(16)} ${c.strategy.padEnd(16)} score=${String(c.score).padStart(6)} bankrupt=${String(c.bankrupt_turn ?? '-').padStart(3)} completed=${c.completed} defaulted=${c.defaulted} cured=${c.cured} late_cps=${c.late_counterparties}`,
+        `  ${c.id} ${c.role.padEnd(16)} ${c.strategy.padEnd(16)} score=${String(c.score).padStart(6)} bankrupt=${String(c.bankrupt_turn ?? '-').padStart(3)} completed=${c.completed} defaulted=${c.defaulted} late_cps=${c.late_counterparties}`,
       );
     }
   }

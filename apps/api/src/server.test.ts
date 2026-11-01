@@ -282,7 +282,6 @@ describe('agent routes', () => {
           {
             type: 'propose_contract',
             counterparty: 'c05',
-            escrow: false,
             terms_text: '',
             obligations: [{ kind: 'goods', by: 'proposer', good: 'ore', qty: 4, due_turn: 2 }],
           },

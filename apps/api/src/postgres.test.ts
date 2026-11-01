@@ -106,6 +106,15 @@ describe.skipIf(url === undefined)('PostgresStore', () => {
       1, 2,
     ]);
 
+    const stale = RunId.parse(`r-${randomUUID()}`);
+    await store.createRun({ id: stale, config, status: 'ended', tokens: {} });
+    await store.rawUpdateConfig(stale, {
+      ...config,
+      knobs: { ...config.knobs, enforcement: 'escrow_available' },
+    });
+    expect((await store.listRuns()).some((r) => r.id === stale)).toBe(false);
+    expect(store.skippedRuns).toContain(stale);
+
     await store.setRunStatus(runId, 'ended');
     expect((await store.listRuns()).find((r) => r.id === runId)?.status).toBe('ended');
   });

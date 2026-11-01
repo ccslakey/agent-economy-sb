@@ -37,7 +37,8 @@ export const Economy = z.object({
   overdraft_limit: Cash.default(-200),
   license_price: Cash.default(1500),
   license_reserve: Cash.default(750),
-  escrow_fee_fraction: Fraction.default(0.05),
+  /** Share of a defaulting party's side of a contract charged as a penalty when enforcement is on. Half when off. */
+  default_penalty_fraction: Fraction.default(0.75),
   rebrand_fee: Cash.default(300),
   shock_chance: Fraction.default(0.05),
   groves: z
@@ -57,7 +58,8 @@ export const Horizon = z.discriminatedUnion('kind', [
 export type Horizon = z.infer<typeof Horizon>;
 
 export const Knobs = z.object({
-  enforcement: z.enum(['none', 'escrow_available', 'enforced']).default('escrow_available'),
+  /** `on` charges the full default penalty, `off` half of it. Deposits are always held and refunded to a party that performed. */
+  enforcement: z.enum(['on', 'off']).default('on'),
   reputation_visibility: z
     .enum(['hidden', 'own_only', 'public', 'public_delayed'])
     .default('public'),

@@ -14,7 +14,7 @@ const Report = z.object({
       roles: z.array(z.string()),
       score: z.number(),
       standing: z.object({ kind: z.string() }),
-      reputation: z.object({ completed: z.number(), defaulted: z.number(), cured: z.number() }),
+      reputation: z.object({ completed: z.number(), defaulted: z.number() }),
       plan: z
         .object({
           early: z.string(),
@@ -49,7 +49,7 @@ export function formatReport(raw: unknown): string {
   lines.push('Scores');
   for (const c of [...report.companies].sort((a, b) => b.score - a.score)) {
     lines.push(
-      `  ${c.id} ${c.name.padEnd(16)} ${c.roles.join(',').padEnd(16)} ${String(c.score).padStart(6)}  ${c.standing.kind}  completed ${c.reputation.completed} defaulted ${c.reputation.defaulted} cured ${c.reputation.cured}  sessions ${c.sessions}`,
+      `  ${c.id} ${c.name.padEnd(16)} ${c.roles.join(',').padEnd(16)} ${String(c.score).padStart(6)}  ${c.standing.kind}  completed ${c.reputation.completed} defaulted ${c.reputation.defaulted}  sessions ${c.sessions}`,
     );
   }
   const bugs = report.companies.flatMap((c) => c.bug_reports.map((b) => ({ ...b, company: c.id })));

@@ -89,13 +89,13 @@ The intercept a\_t moves each turn by a small random factor (default ±5%) and b
 | Storage cost        | 1 per unit per turn                                            | All goods                                                                              |
 | Furniture demand    | a = 640, b = 30                                                | Per turn                                                                               |
 | Tool demand         | a = 240, b = 10                                                | Per turn                                                                               |
-| Reference prices    | Ore 15, timber 20, ingot 55, plank 45, tool 160, furniture 400 | Base for scrap, escrow fees, and the end inventory value. Tuned in M3 so every role clears about 150 per turn at capacity before upkeep |
+| Reference prices    | Ore 15, timber 20, ingot 55, plank 45, tool 160, furniture 400 | Base for scrap, penalties, and the end inventory value. Tuned in M3 so every role clears about 150 per turn at capacity before upkeep |
 | Scrap price         | 30% of reference                                               | Any good, any quantity                                                                 |
 | End inventory value | 50% of reference                                               | Valuation of inventory in the final score, tuned in M3                                 |
 | Overdraft limit     | −200                                                           | Below this the company goes bankrupt                                                   |
 | Extra license       | 1,500                                                          | One per company                                                                        |
 | License reserve     | 750                                                            | Minimum bid for a bankrupt company's license, half the extra-license price             |
-| Escrow fee          | 5% of contract value                                           | Split evenly, charged on acceptance                                                    |
+| Default penalty     | 75% of the failing side's value                                | Halved when enforcement is off. Destroyed, not paid to the other party                 |
 | Rebrand fee         | 300                                                            | Only when rebranding is enabled                                                        |
 | Shock chance        | 5% per turn                                                    | One shock drawn from the table below                                                   |
 
@@ -110,7 +110,7 @@ The intercept a\_t moves each turn by a small random factor (default ±5%) and b
 
 ## Contracts and settlement
 
-All trade between companies goes through bilateral contracts that the engine records but does not enforce. There is no order book for intermediate goods, so trust cannot be routed around.
+All trade between companies goes through bilateral contracts that the engine records and holds. There is no order book for intermediate goods, so trust cannot be routed around, but the engine settles every contract: a party that performs is made whole, and a party that fails pays for it.
 
 **A contract records**
 
@@ -120,21 +120,21 @@ All trade between companies goes through bilateral contracts that the engine rec
 - Escrow flag
 - Free-text terms, which the engine stores but never interprets
 
-**Lifecycle.** A proposal is accepted, rejected, withdrawn by the proposer, or expires at the end of the next turn. Once accepted it is active, and each obligation is fulfilled only when the obligated party submits a `deliver` or `pay` action. Partial fulfillment is allowed.
+**Lifecycle.** A proposal is accepted, rejected, withdrawn by the proposer, or expires at the end of the next turn. Once accepted it is active, and each party puts in what it owes with a `deliver` or `pay` action. Deposits leave the depositor at once and are held by the engine. Partial deposits are allowed.
 
-Each obligation has its own due turn. When the last obligation is met on time, the contract is `completed`. At the end of an obligation's due turn, if that obligation is unmet, the contract is `defaulted`, attributed to the obligated party. Fulfillment after a due turn is still accepted, and once every obligation is met the status moves to `cured`. Every late completion passes through `defaulted` first, so there is no separate late state.
+Each obligation has its own due turn. When every obligation is in, each deposit goes to its receiver and the contract is `completed`. At the end of a turn in which an obligation due that turn is still unmet, the contract settles as `defaulted`, attributed to each party with an unmet due obligation, and is over.
 
-Per-obligation due turns cover credit without a loan feature. A loan is a cash obligation due now and a larger cash obligation due later, with the interest written in the terms text. Collateral is an escrowed good. A default cascade is a company that misses its own due turn because a counterparty missed theirs. The engine interprets none of this. It records what happened, and the dashboard measures it.
+**Settlement of a default.** A party that put in everything it owed gets its deposits back at no cost. A party that did not loses everything it put in, which is destroyed, and is charged a penalty: `default_penalty_fraction` of the reference value of its side of the contract (default 75%), halved when the enforcement knob is `off`. The penalty is cash and can take a company below zero, so an agent that promises what it cannot put in risks bankruptcy. Nothing is paid to the wronged party, so being cheated never profits anyone.
+
+Holding deposits means a contract cannot carry credit: cash put in is not released until the other side performs, so a loan written as two cash obligations never pays out the principal. Credit is out of scope under this regime.
 
 &#91;embedded content: contract lifecycle · 6 states\]
 
 Every move from Active depends on actions the parties choose to take; the engine only records which state the contract ended in.
 
-**Escrow.** When both parties accept an escrowed contract, each deposits its obligation into escrow instead of sending it. Escrow releases both sides together once everything is deposited. If the latest due turn ends first, each side's deposit is refunded. The fee is 5% of contract value, where contract value is the cash obligations plus the goods obligations valued at reference prices. The fee is the price of trust, and uptake is a key metric.
-
 **Transfers.** A `transfer` action sends goods or cash to any company outside a contract. This covers gifts, side payments, and bribes.
 
-**Reputation ledger.** Per company: contracts completed, defaulted, and cured, plus the total value still in default and the total value cured. A default that the obligated party later fulfills moves from defaulted to cured, so a cured default is visible but weighs less than one left open. The ledger reports counts and values only. Agents decide what they mean. Its visibility is a run knob (see Run configuration).
+**Reputation ledger.** Per company: contracts completed and defaulted, plus the total value still owed at those defaults. The ledger reports counts and values only. Agents decide what they mean. Its visibility is a run knob (see Run configuration).
 
 ## Communication
 
@@ -173,7 +173,7 @@ A run is fully described by one config file plus a seed. All engine randomness (
 
 | Knob                    | Options                                                                                                    | Default            |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------ |
-| Enforcement             | `none`, `escrow_available`, `enforced`                                                                     | `escrow_available` |
+| Enforcement             | `on` (the full default penalty), `off` (half of it)                                                        | `on`               |
 | Reputation visibility   | `hidden`, `own_only`, `public`, `public_delayed` (one turn behind)                                         | `public`           |
 | Rebranding              | `off`, `on` (pay fee, new name, reputation resets)                                                         | `off`              |
 | Model identity          | `hidden`, `visible` (agents see which model runs each company)                                             | `hidden`           |
@@ -184,7 +184,7 @@ A run is fully described by one config file plus a seed. All engine randomness (
 | Demand profile          | `default`, plus named profiles added only as deliberate experiments                                        | `default`          |
 | Needs board             | `off`, `on` (the observation lists every company's input shortfall and output stock)                      | `off`              |
 
-Enforcement `enforced` makes the engine execute each obligation of an accepted contract automatically at its due turn, or fail it if either side lacks the goods or cash. It is the control condition for every trust experiment.
+Enforcement sets the penalty a failing party pays at settlement. Deposits are held and refunded to a performing party under either setting, so the knob changes only how much failing costs.
 
 The admin always keeps the link between a rebranded company and its old identity.
 
@@ -217,7 +217,7 @@ Plain REST over JSON, one bearer token per company. Version one is deliberately 
 | ----------------------------------------------------------------------------- | ------------------------------------------------------ | --------------- |
 | `post_message`, `send_dm`                                                     | Send a message                                         | End of round    |
 | `propose_contract`, `accept_contract`, `reject_contract`, `withdraw_contract` | Contract negotiation                                   | End of round    |
-| `deliver`, `pay`                                                              | Fulfill a contract obligation (or deposit into escrow) | End of round    |
+| `deliver`, `pay`                                                              | Put goods or cash into a contract, held until settlement | End of round    |
 | `transfer`                                                                    | Send goods or cash outside any contract                | End of round    |
 | `extract`, `produce`, `sell_npc`, `scrap`                                     | Operations order; latest of each kind wins             | Operations step |
 | `buy_license`, `bid_license`, `rebrand`                                       | Company changes                                        | Operations step |
@@ -255,7 +255,7 @@ The response returns a result per action, in order. A failed action never blocks
   },
   "messages": { "public": [], "dms": [] },
   "reputation": {
-    "c03": { "completed": 6, "defaulted": 0, "cured": 1, "value_defaulted": 0, "value_cured": 180 }
+    "c03": { "completed": 6, "defaulted": 0, "value_defaulted": 0 }
   },
   "round_budget": { "tool_calls_left": 6 }
 }
@@ -290,7 +290,7 @@ Projections are rebuildable from `events` at any time and exist only to make the
 
 - Lifecycle: `run_started`, `round_opened`, `round_resolved`, `turn_closed`, `run_paused`, `run_resumed`, `run_ended`
 - Actions: `action_submitted`, `action_rejected` (with error code)
-- Contracts: `contract_proposed`, `contract_accepted`, `contract_rejected`, `contract_withdrawn`, `contract_expired`, `delivery_made`, `payment_made`, `escrow_deposited`, `escrow_released`, `escrow_refunded`, `contract_completed`, `contract_defaulted`, `contract_cured`, `transfer_made`
+- Contracts: `contract_proposed`, `contract_accepted`, `contract_rejected`, `contract_withdrawn`, `contract_expired`, `escrow_deposited`, `escrow_released`, `escrow_refunded`, `escrow_forfeited`, `penalty_charged`, `contract_completed`, `contract_defaulted`, `transfer_made`
 - Talk: `message_posted`, `dm_sent`
 - Operations: `extraction_completed`, `production_completed`, `npc_market_cleared`, `scrap_sold`, `upkeep_charged`, `storage_charged`
 - World: `grove_regrew`, `shock_applied`, `company_bankrupt`, `license_bought`, `license_auctioned`, `company_rebranded`
@@ -319,7 +319,7 @@ A read-only web app over the events and projections, for a non-player admin. Eve
 **Metrics (computed, never shown to agents)**
 
 - Default rate by model, by role, and by turn
-- Escrow uptake: share of contract value escrowed, and how it changes after a company is defaulted on
+- Penalty volume: cash destroyed by penalties per turn, and how trade volume responds to it
 - Total welfare: sum of net worth gains across all companies
 - Inequality: Gini of final net worth
 - Collusion signal: quantity sold to the NPC by same-role sellers versus the Cournot benchmark for that turn
@@ -434,6 +434,8 @@ Resolved on Oct 31, 2026. Each entry names the v0.1 question and where the answe
 - **M4 result.** Six Sonnet companies at low effort, one per role, 15 fixed turns, six concurrent sessions. The 45 rounds took 5 minutes 45 seconds, about 6 seconds per round, with a mean session of 4.8 seconds. 276 sessions read 5.6M input tokens, almost all cache hits, and wrote 90k output tokens, for a nominal API cost of $4.59. Quota consumption on the subscription is not readable from the runner. The game was thin: 13 contracts proposed, 5 accepted, 3 completed, 2 defaulted, the mill bankrupt, three others near zero cash, and only the two roles with an NPC outlet in profit. The farming answers agree on the cause: notes were one line, so each fresh session had no plan and no record, agents did not re-read the docs, and the observation gave no price or outlet for intermediate goods and no per-turn profit. First porcelain to add, in order: the company's recipe and the reference prices in the observation, last turn's own sales and net worth in the observation, and a round prompt that tells the agent to read the docs on turn 1 and to keep its plan and counterparties in its notes. Then rerun at medium effort before comparing models.
 - **Observation after the second M4.** The observation now itemizes last turn's upkeep and storage, lists the scrap price per unit for every good, and states the horizon as a known last turn or a minimum plus hazard. A `needs_board` knob, off by default, adds every company's input shortfall and output stock, because who-wants-what is an information-structure choice to experiment with rather than a default.
 - **M4 at medium effort.** Same six Sonnet companies and seed family, 15 fixed turns, with the plan prompts, the observation porcelain, and auto-advance off. The 45 rounds took 10 minutes 37 seconds, about 14 seconds per round, mean session 7.4 seconds; 261 sessions read 6.9M input tokens and wrote 150k output tokens for a nominal $5.96. The game came alive: 37 contracts proposed against 13 at low effort, 18 accepted, 9 completed, 9 defaulted, 7 escrowed, 25 messages, and every agent revised its plan every turn. Then it stalled. The toolmaker defaulted six times on ingot deals, the smelter stockpiled 24 ingots with no buyer and went bankrupt, the mill went under, and the miner and logger sat on full stock with nobody buying. The thoughts fields show the stall turn by turn: the toolmaker moved from "ingot supply is the bottleneck" to "only trust escrow" to "net worth equals cash, not risking it" and idled from turn 10. The farming answers agree on three gaps: no way to see who needs what, no itemized upkeep and storage so cash "drifted" unexplained, and no sign that scrap takes any good, so intermediate producers believed their output had no outlet. Next porcelain, in order: last turn's charges in the observation, the scrap outlet and price in the observation, the last turn when the horizon is fixed, and a knob for a public needs board, since who-wants-what is an information-structure choice and not a bug.
+- **Penalty regime.** Every contract is held by the engine and settles at the first missed due turn. A party that performed gets its deposits back; a party that failed loses them and pays `default_penalty_fraction` of its side's value, 75% with enforcement `on` and half that with it `off`, destroyed rather than paid to anyone. The escrow flag and fee, the `enforced` mode, and the cured state are gone. Credit through contracts is gone with them, since held cash never pays out until the other side performs. Decided after the third M4 run, where the unreliable toolmaker won by taking deliveries and never paying.
+- **M4 under the penalty regime.** Same six Sonnet companies at medium effort, enforcement on. 45 rounds in 9 minutes 23 seconds, mean session 7.2 seconds, nominal $5.92. Trade: 26 proposals, 17 accepted, 9 completed against 5 in the previous run, 8 defaulted, 9 penalties charged for 1,700 cash destroyed, 7 refunds to parties that had performed. The toolmaker that welched its way to first place last time completed 4 contracts, defaulted on none, and won on merit with 1,935; its thoughts track the smelter's reliability turn by turn and never mention preserving cash until the final turns. The defaults moved to the furniture maker, which promised what it could not put in four times and paid 955 in penalties, and to the mill, which overpromised planks on turn 4, paid 652, and went bankrupt on turn 10. So the regime does what it was for: performing is safe, failing is expensive, and the chain's unreliable node is now whoever overcommits rather than whoever takes deliveries. The farming answers repeat one complaint from every run: notes are a single line, so each fresh session cannot explain its own record. The plan's thoughts field carries the history the notes lack, and the farming prompt should read the plan before asking.
 - **Buildout order.** The schema package comes first because every later unit imports it. The three inspector views come before the first LLM run because reading trajectories is the bottleneck. M2 hand-plays through the MCP server rather than curl. M3 opens with a determinism test. Work lands in ten units of about 500 lines, each ending in a rerunnable check.
 - **Demand across runs.** Demand parameters stay fixed and the seed is the replicate. Experiments pair runs by seed across knob settings and start with three to five seeds per setting. A different demand curve is a named profile knob, never an edit to the economy table.
 

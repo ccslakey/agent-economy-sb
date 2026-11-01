@@ -360,20 +360,11 @@ function applyBody(state: RunState, event: Event): RunState {
         contracts: { ...state.contracts, [id]: contract },
       };
     }
-    case 'contract_accepted': {
-      const { contract: id, escrow_fee_per_side } = event.payload;
-      let next = withContract(state, id, (k) => ({
+    case 'contract_accepted':
+      return withContract(state, event.payload.contract, (k) => ({
         ...k,
         status: { status: 'active', accepted_turn: state.turn },
       }));
-      if (escrow_fee_per_side > 0) {
-        const k = contractOf(state, id);
-        for (const party of [k.proposer, k.counterparty]) {
-          next = withCompany(next, party, (c) => ({ ...c, cash: c.cash - escrow_fee_per_side }));
-        }
-      }
-      return next;
-    }
     case 'contract_rejected':
       return withContract(state, event.payload.contract, (k) => ({
         ...k,
@@ -389,27 +380,6 @@ function applyBody(state: RunState, event: Event): RunState {
         ...k,
         status: { status: 'expired', turn: state.turn },
       }));
-    case 'delivery_made': {
-      const { contract: id, obligation, good, qty } = event.payload;
-      const from = actorOf(event);
-      const k = contractOf(state, id);
-      const to = k.proposer === from ? k.counterparty : k.proposer;
-      let next = withContract(state, id, (c) => meet(c, obligation, qty));
-      next = withCompany(next, from, (c) => ({
-        ...c,
-        inventory: addGoods(c.inventory, good, -qty),
-      }));
-      return withCompany(next, to, (c) => ({ ...c, inventory: addGoods(c.inventory, good, qty) }));
-    }
-    case 'payment_made': {
-      const { contract: id, obligation, amount } = event.payload;
-      const from = actorOf(event);
-      const k = contractOf(state, id);
-      const to = k.proposer === from ? k.counterparty : k.proposer;
-      let next = withContract(state, id, (c) => meet(c, obligation, amount));
-      next = withCompany(next, from, (c) => ({ ...c, cash: c.cash - amount }));
-      return withCompany(next, to, (c) => ({ ...c, cash: c.cash + amount }));
-    }
     case 'contract_completed':
       return withContract(state, event.payload.contract, (k) =>
         k.status.status === 'active'
@@ -440,25 +410,6 @@ function applyBody(state: RunState, event: Event): RunState {
           : k,
       );
     }
-    case 'contract_cured': {
-      const { contract: id, cured_value } = event.payload;
-      return withContract(state, id, (k) =>
-        k.status.status === 'defaulted'
-          ? {
-              ...k,
-              status: {
-                status: 'cured',
-                accepted_turn: k.status.accepted_turn,
-                defaulted_turn: k.status.turn,
-                defaulted_by: k.status.by,
-                turn: state.turn,
-                cured_value,
-              },
-            }
-          : k,
-      );
-    }
-
     case 'escrow_deposited': {
       const { contract: id, obligation: index, units } = event.payload;
       const depositor = actorOf(event);
@@ -484,24 +435,34 @@ function applyBody(state: RunState, event: Event): RunState {
       }
       return next;
     }
-    case 'escrow_refunded': {
-      const contract = contractOf(state, event.payload.contract);
+    case 'escrow_refunded':
+    case 'escrow_forfeited': {
+      // A refund returns the party's deposits; a forfeit destroys them. Either way they leave the contract.
+      const { contract: id, party } = event.payload;
+      const contract = contractOf(state, id);
+      const depositor = party === 'proposer' ? contract.proposer : contract.counterparty;
       let next = state;
-      for (const o of contract.obligations) {
-        const depositor = o.by === 'proposer' ? contract.proposer : contract.counterparty;
-        next = withCompany(next, depositor, (c) =>
-          o.kind === 'goods'
-            ? { ...c, inventory: addGoods(c.inventory, o.good, o.met) }
-            : { ...c, cash: c.cash + o.met },
-        );
+      if (event.type === 'escrow_refunded') {
+        for (const o of contract.obligations) {
+          if (o.by !== party || o.met === 0) continue;
+          next = withCompany(next, depositor, (c) =>
+            o.kind === 'goods'
+              ? { ...c, inventory: addGoods(c.inventory, o.good, o.met) }
+              : { ...c, cash: c.cash + o.met },
+          );
+        }
       }
-      return withContract(next, contract.id, (c) => {
+      return withContract(next, id, (c) => {
+        const clear = <O extends Obligation>(o: O): O => (o.by === party ? { ...o, met: 0 } : o);
         const [first, ...rest] = c.obligations;
-        return {
-          ...c,
-          obligations: [{ ...first, met: 0 }, ...rest.map((o) => ({ ...o, met: 0 }))],
-        };
+        return { ...c, obligations: [clear(first), ...rest.map(clear)] };
       });
+    }
+    case 'penalty_charged': {
+      const { contract: id, party, amount } = event.payload;
+      const contract = contractOf(state, id);
+      const payer = party === 'proposer' ? contract.proposer : contract.counterparty;
+      return withCompany(state, payer, (c) => ({ ...c, cash: c.cash - amount }));
     }
     case 'message_posted':
     case 'dm_sent': {

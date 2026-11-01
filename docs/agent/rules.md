@@ -32,7 +32,7 @@ You have a fixed number of API calls per round. Every call counts, including rea
 
 ## Enforcement
 
-The engine records contracts. It enforces only what these rules say it enforces. A promise in a message is not enforced. An obligation on a contract is not enforced either, unless the run uses escrow or enforced mode. See `contracts.md`.
+The engine holds what each party puts into a contract and settles at the due turn. A party that performed gets its deposits back if the other fails. A party that fails loses its deposits and pays a penalty of a share of its side's value, 75% with enforcement on and half that with it off. A promise in a message is not a contract and is not enforced. See `contracts.md`.
 
 ## Horizon
 

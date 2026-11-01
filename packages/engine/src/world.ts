@@ -49,7 +49,7 @@ export function remainingValue(state: RunState, obligation: Obligation): number 
   return (obligation.qty - obligation.met) * state.config.economy.reference_prices[obligation.good];
 }
 
-/** Cash plus goods at reference prices, the base for the escrow fee. */
+/** Cash plus goods at reference prices, the base for default penalties. */
 export function contractValue(state: RunState, obligations: readonly Obligation[]): number {
   return obligations.reduce(
     (sum, o) =>
@@ -58,11 +58,13 @@ export function contractValue(state: RunState, obligations: readonly Obligation[
   );
 }
 
-/** Each side's share of the escrow fee, charged on acceptance. Zero for an unescrowed contract. */
-export function escrowFeePerSide(state: RunState, contract: Contract): number {
-  if (!contract.escrow) return 0;
-  const fee = contractValue(state, contract.obligations) * state.config.economy.escrow_fee_fraction;
-  return Math.floor(fee / 2);
+/** What a party that fails its side of a contract is charged: a share of that side's value, halved when enforcement is off. */
+export function penaltyFor(state: RunState, contract: Contract, party: Party): number {
+  const side = contract.obligations.filter((o) => o.by === party);
+  const fraction =
+    state.config.economy.default_penalty_fraction *
+    (state.config.knobs.enforcement === 'on' ? 1 : 0.5);
+  return Math.floor(contractValue(state, side) * fraction);
 }
 
 export function partyOf(contract: Contract, company: CompanyId): Party | null {
@@ -74,43 +76,25 @@ export function partyOf(contract: Contract, company: CompanyId): Party | null {
 /**
  * Derived from contracts, never stored. Counts closures from the company's current identity
  * onward and no later than `asOf`, which is how the public_delayed knob lags by a turn. Both
- * parties get credit for a completion. A cure counts as completed for the party that never
- * defaulted and as cured for the one that did.
+ * parties get credit for a completion; only the failing party carries a default.
  */
 export function reputationOf(
   state: RunState,
   company: Company,
   asOf: number = state.turn,
 ): Reputation {
-  const rep: Reputation = {
-    completed: 0,
-    defaulted: 0,
-    cured: 0,
-    value_defaulted: 0,
-    value_cured: 0,
-  };
+  const rep: Reputation = { completed: 0, defaulted: 0, value_defaulted: 0 };
   for (const contract of Object.values(state.contracts)) {
     const side = partyOf(contract, company.id);
     if (side === null) continue;
     const { status } = contract;
-    if (
-      status.status !== 'completed' &&
-      status.status !== 'defaulted' &&
-      status.status !== 'cured'
-    ) {
-      continue;
-    }
+    if (status.status !== 'completed' && status.status !== 'defaulted') continue;
     if (status.turn > asOf || status.turn < company.identity_since_turn) continue;
     if (status.status === 'completed') rep.completed += 1;
-    else if (status.status === 'defaulted') {
-      if (status.by.includes(side)) {
-        rep.defaulted += 1;
-        rep.value_defaulted += status.unmet_value;
-      }
-    } else if (status.defaulted_by.includes(side)) {
-      rep.cured += 1;
-      rep.value_cured += status.cured_value;
-    } else rep.completed += 1;
+    else if (status.by.includes(side)) {
+      rep.defaulted += 1;
+      rep.value_defaulted += status.unmet_value;
+    }
   }
   return rep;
 }

@@ -1,23 +1,22 @@
 # Contracts
 
-A contract is a bilateral agreement the engine records. It has a proposer and a counterparty, a list of obligations, an escrow flag, and free text terms the engine stores but never reads.
+A contract is a bilateral agreement the engine records and holds. It has a proposer and a counterparty, a list of obligations, and free text terms the engine stores but never reads.
 
-Each obligation names who owes (`proposer` or `counterparty`), what (goods of one kind and quantity, or a cash amount), and a due turn. Obligations can have different due turns, so a contract can be a sale, a loan with repayment later, or a schedule.
+Each obligation names who owes (`proposer` or `counterparty`), what (goods of one kind and quantity, or a cash amount), and a due turn.
 
 ## Lifecycle
 
 - `proposed`: the counterparty can `accept_contract` or `reject_contract`, the proposer can `withdraw_contract`. A proposal left open past the end of the next turn expires.
-- `active`: once accepted. The obligated party fulfils with `deliver` (goods) or `pay` (cash), naming the contract and the obligation index. Partial fulfilment is allowed.
-- `completed`: every obligation met on time.
-- `defaulted`: an obligation was still unmet at the end of its due turn. The default names who failed and the reference value still owed.
-- `cured`: a defaulted contract whose obligations were all met later.
+- `active`: once accepted. Each party puts in what it owes with `deliver` (goods) or `pay` (cash), naming the contract and the obligation index. Deposits leave you at once and are held by the engine. Partial deposits are allowed.
+- `completed`: every obligation is in. Each deposit goes to its receiver.
+- `defaulted`: at the end of a turn, an obligation due that turn was still not fully in. The contract settles then and is over.
+
+## Settlement of a default
+
+A party that put in everything it owed gets its deposits back at no cost. A party that did not loses everything it put in and is charged a penalty: a share of the value of its side of the contract, 75% when enforcement is on and half that when off. The penalty is cash, taken even if that leaves you below zero, so do not promise what you cannot put in by the due turn.
 
 Contract ids are assigned when the round resolves. Your next observation lists them under `proposed_by_you`.
 
-## Escrow
-
-When a proposal has `escrow: true` and the run allows escrow, both sides pay half of a fee of 5% of the contract's value when it is accepted. Deliveries and payments on the contract go into escrow instead of to the other party. Once everything is deposited, escrow releases both sides at once. If the latest due turn ends first, deposits are refunded and the default is recorded against whoever had not deposited.
-
 ## Reputation
 
-When visible, the ledger shows per company how many contracts completed, how many are in default and for what value, and how many defaults were later cured and for what value. It is counts and values only. What they mean is up to you.
+When visible, the ledger shows per company how many contracts completed, how many it defaulted on, and the value still owed at those defaults. It is counts and values only. What they mean is up to you.

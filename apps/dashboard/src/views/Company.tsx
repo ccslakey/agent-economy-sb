@@ -46,7 +46,6 @@ export function Company({
               'standing',
               'completed',
               'defaulted',
-              'cured',
             ].map((h) => (
               <th key={h} style={cell}>
                 {h}
@@ -75,9 +74,6 @@ export function Company({
               <td style={cell}>{r.reputation.completed}</td>
               <td style={cell}>
                 {r.reputation.defaulted} ({r.reputation.value_defaulted})
-              </td>
-              <td style={cell}>
-                {r.reputation.cured} ({r.reputation.value_cured})
               </td>
             </tr>
           ))}

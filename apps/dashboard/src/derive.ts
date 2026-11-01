@@ -114,22 +114,20 @@ export function describe(event: Event): string {
       return `withdrew ${event.payload.contract}`;
     case 'contract_expired':
       return `${event.payload.contract} expired`;
-    case 'delivery_made':
-      return `delivered ${event.payload.qty} ${event.payload.good} on ${event.payload.contract}`;
-    case 'payment_made':
-      return `paid ${event.payload.amount} on ${event.payload.contract}`;
     case 'escrow_deposited':
-      return `deposited ${event.payload.units} into escrow on ${event.payload.contract}`;
+      return `deposited ${event.payload.units} on ${event.payload.contract}`;
     case 'escrow_released':
-      return `escrow released on ${event.payload.contract}`;
+      return `${event.payload.contract} released to both sides`;
     case 'escrow_refunded':
-      return `escrow refunded on ${event.payload.contract}`;
+      return `${event.payload.party} refunded on ${event.payload.contract}`;
+    case 'escrow_forfeited':
+      return `${event.payload.party} forfeited deposits on ${event.payload.contract}`;
+    case 'penalty_charged':
+      return `${event.payload.party} charged ${event.payload.amount} on ${event.payload.contract}`;
     case 'contract_completed':
       return `${event.payload.contract} completed`;
     case 'contract_defaulted':
       return `${event.payload.contract} defaulted by ${event.payload.by.join(' and ')} for ${event.payload.unmet_value}`;
-    case 'contract_cured':
-      return `${event.payload.contract} cured for ${event.payload.cured_value}`;
     case 'transfer_made':
       return `transferred ${event.payload.what.kind === 'cash' ? `${event.payload.what.amount} cash` : `${event.payload.what.qty} ${event.payload.what.good}`} to ${event.payload.to}`;
     case 'message_posted':

@@ -27,7 +27,7 @@ const cashTerms = z.object({
 export const ObligationTerms = z.discriminatedUnion('kind', [goodsTerms, cashTerms]);
 export type ObligationTerms = z.infer<typeof ObligationTerms>;
 
-/** As it stands. `met` counts units delivered or paid, or deposited into escrow on an escrowed contract. */
+/** As it stands. `met` counts units deposited with the engine toward this obligation. */
 export const Obligation = z.discriminatedUnion('kind', [
   goodsTerms.extend({ met: Qty }),
   cashTerms.extend({ met: Cash.nonnegative() }),
@@ -41,7 +41,6 @@ export const ContractTerms = z.object({
   proposer: CompanyId,
   counterparty: CompanyId,
   obligations: nonEmpty(ObligationTerms),
-  escrow: z.boolean(),
   /** Stored, never interpreted. */
   terms_text: z.string().max(2000),
 });
@@ -49,9 +48,9 @@ export type ContractTerms = z.infer<typeof ContractTerms>;
 
 /**
  * The lifecycle, one member per state, each carrying only the facts that state has.
- * proposed -> active | rejected | withdrawn | expired; active -> completed | defaulted;
- * defaulted -> cured. A late completion always passes through defaulted, because a default
- * fires the moment a due turn ends unmet.
+ * proposed -> active | rejected | withdrawn | expired; active -> completed | defaulted.
+ * Deposits are held by the engine. The contract completes when every obligation is deposited,
+ * and settles as defaulted at the end of the first due turn an obligation is still unmet.
  */
 export const ContractStatus = z.discriminatedUnion('status', [
   z.object({ status: z.literal('proposed'), turn: Turn }),
@@ -67,14 +66,6 @@ export const ContractStatus = z.discriminatedUnion('status', [
     by: nonEmpty(Party),
     /** Reference value of what was still owed when the default fired. */
     unmet_value: Cash,
-  }),
-  z.object({
-    status: z.literal('cured'),
-    accepted_turn: Turn,
-    defaulted_turn: Turn,
-    defaulted_by: nonEmpty(Party),
-    turn: Turn,
-    cured_value: Cash,
   }),
 ]);
 export type ContractStatus = z.infer<typeof ContractStatus>;
