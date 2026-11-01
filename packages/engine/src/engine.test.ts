@@ -1063,10 +1063,21 @@ describe('observation', () => {
     );
     expect(board.horizon).toEqual({ kind: 'fixed', last_turn: 9 });
     expect(board.needs?.find((n) => n.id === 'c05')).toEqual({ id: 'c05', wants: {}, offers: {} });
-    expect(board.needs?.find((n) => n.id === 'c09')).toEqual({
-      id: 'c09',
-      wants: { ingot: 6 },
-      offers: {},
+    expect(board.needs?.find((n) => n.id === 'c09')).toEqual({ id: 'c09', wants: {}, offers: {} });
+    expect(board.needs).toHaveLength(5);
+    const later = game({}, { needs_board: 'on' });
+    later.submit('c05', [{ type: 'produce', good: 'ingot', qty: 6 }]);
+    later.closeTurn();
+    const afterTurn = observe(
+      later.state(),
+      company(later, 'c01'),
+      { contracts_changed: [], messages: [] },
+      8,
+    );
+    expect(afterTurn.needs?.find((n) => n.id === 'c05')).toEqual({
+      id: 'c05',
+      wants: { ore: 12 },
+      offers: { ingot: 6 },
     });
     expect(next.you.net_worth).toBe(next.you.cash + 12 * 15 * 0.5);
     expect(next.contracts.proposed_by_you).toEqual(['k1']);
