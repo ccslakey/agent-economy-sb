@@ -136,6 +136,13 @@ async function start(spawner: Spawner, quotaWaitMs = 1) {
   return { result, events, traces, lines, store, run_id };
 }
 
+/** The run ended, and the only events after it are traces, whose timing against the last advance is a race. */
+function expectEnded(events: { type: string }[]): void {
+  const at = events.findIndex((e) => e.type === 'run_ended');
+  expect(at).toBeGreaterThan(0);
+  expect(events.slice(at + 1).every((e) => e.type === 'agent_trace_recorded')).toBe(true);
+}
+
 describe('drive', () => {
   it('plays LLM companies through sessions and bots through the API until the run ends', async () => {
     const { result, events, traces } = await start(fakeAgent);
@@ -145,7 +152,7 @@ describe('drive', () => {
     expect(traces.filter((t) => t.kind === 'round')).toHaveLength(12);
     expect(traces.filter((t) => t.kind === 'farming')).toHaveLength(2);
     expect(events.filter((e) => e.type === 'agent_trace_recorded')).toHaveLength(14);
-    expect(events.at(-3)?.type).toBe('run_ended');
+    expectEnded(events);
     const resumed = traces.filter(
       (t) => t.kind === 'round' && (t.result as { resume: string | null }).resume !== null,
     );
@@ -173,7 +180,7 @@ describe('drive', () => {
     expect(types.indexOf('run_paused')).toBeGreaterThan(0);
     expect(types.indexOf('run_resumed')).toBe(types.indexOf('run_paused') + 1);
     expect(lines.some((l) => l.includes('quota limit'))).toBe(true);
-    expect(events.at(-3)?.type).toBe('run_ended');
+    expectEnded(events);
   });
 
   it('hands a company to the honest trader bot after repeated failures', async () => {
@@ -196,7 +203,7 @@ describe('drive', () => {
     expect(
       events.filter((e) => e.type === 'action_submitted' && e.actor === 'c05').length,
     ).toBeGreaterThan(0);
-    expect(events.at(-3)?.type).toBe('run_ended');
+    expectEnded(events);
   });
 });
 
