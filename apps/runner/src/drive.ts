@@ -31,14 +31,32 @@ export type DriveOptions = {
   farming?: boolean;
 };
 
-export type DriveResult = { turns: number; sessions: number; replaced: CompanyId[] };
+export type DriveResult = {
+  turns: number;
+  sessions: number;
+  replaced: CompanyId[];
+  /** The end-of-run report from the API: scores, plans, thoughts, notes, bug reports, farming answers. */
+  report: unknown;
+};
 
 type Driver =
   | { kind: 'llm'; model: string; effort: string }
   | { kind: 'bot'; strategy: BotStrategy };
 
-const roundPrompt = (turn: number, round: number, budget: number) =>
-  `It is turn ${turn}, round ${round} of 3. Read your notes and your observation first. If you have not read the docs yet this game, read rules.md, recipes.md, contracts.md, and api.md. Decide what to do this round, submit one batch of actions with submit_actions, then update your notes for your future self. You have ${budget} tool calls this round, including the ones already used.`;
+/**
+ * The user message for a round. The first round of the game reads the docs and writes the plan.
+ * The first round of later turns revises the plan. Later rounds act on what arrived.
+ */
+export const roundPrompt = (turn: number, round: number, budget: number): string => {
+  const budgetLine = `You have ${budget} tool calls this round, including the ones already used, so plan your calls.`;
+  if (turn === 1 && round === 1) {
+    return `This is turn 1, round 1, the start of the game. Read rules.md, contracts.md, and api.md with the docs tool. Every action shape is in api.md; do not guess field names. Then read your observation; it shows your recipes and the reference prices. Write your game plan with write_plan: what you will do in the early game, the mid game, and the late game, what you are doing now, and your thoughts. Then submit your first batch of actions with submit_actions, and write notes for your future self: who you want to trade with, what you have offered, and what to check next round. ${budgetLine}`;
+  }
+  if (round === 1) {
+    return `It is turn ${turn}, round 1 of 3. Read your plan, your notes, and your observation. Call write_plan this round: keep the early, mid, and late fields unless the game has changed, and rewrite now and thoughts to say what you are doing this turn and how you feel it is going. Then submit this turn's orders and proposals with submit_actions, and update your notes. ${budgetLine}`;
+  }
+  return `It is turn ${turn}, round ${round} of 3. Read your notes and your observation. Answer any proposals or messages that arrived, deliver and pay what you owe, and submit a batch with submit_actions, even an empty one. Update your notes if anything changed. ${budgetLine}`;
+};
 
 const FARMING_PROMPT =
   'The game has ended. Answer in prose, briefly: what wasted your time, what was confusing, what was missing, and which companies did you think were run by which model or bot, and why?';
@@ -228,7 +246,8 @@ export async function drive(options: DriveOptions): Promise<DriveResult> {
     const phase: Phase = state.phase;
     if (phase.kind === 'ended') {
       if (options.farming !== false) await farm(state);
-      return { turns: state.turn, sessions, replaced };
+      const report = await admin<unknown>('GET', `/admin/runs/${options.runId}/report`);
+      return { turns: state.turn, sessions, replaced, report };
     }
     if (phase.kind === 'paused') {
       await options.sleep(1000);

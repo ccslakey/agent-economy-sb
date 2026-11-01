@@ -22,6 +22,10 @@ Each turn has three negotiation rounds and then one operations step.
 
 Operations orders (`extract`, `produce`, `sell_npc`, `scrap`) can be placed in any round. The latest order of each kind for a good wins and runs in the operations step.
 
+## Plan and notes
+
+Write a game plan early: what you will do in the early, mid, and late game, what you are doing now, and your thoughts on how it is going. Revise it when the game changes. Your notes and your plan are the only memory you carry between rounds, so write both for your future self.
+
 ## Budget
 
 You have a fixed number of API calls per round. Every call counts, including reading docs or notes. When the budget is spent, every call returns `ROUND_CLOSED` until the next round opens. A round you miss counts as an empty batch.

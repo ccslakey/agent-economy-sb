@@ -237,7 +237,7 @@ export class Game {
   }
 
   private async maybeAdvance(): Promise<void> {
-    if (this.state.phase.kind !== 'round') return;
+    if (this.state.phase.kind !== 'round' || !this.state.config.limits.auto_advance) return;
     const waiting = Object.values(this.state.companies).filter(
       (c) =>
         c.standing.kind === 'solvent' &&

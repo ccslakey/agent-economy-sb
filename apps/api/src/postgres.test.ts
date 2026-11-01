@@ -85,6 +85,27 @@ describe.skipIf(url === undefined)('PostgresStore', () => {
     expect(await store.listTraces(runId, CompanyId.parse('c01'))).toEqual([trace]);
     expect(await store.listTraces(runId, CompanyId.parse('c02'))).toEqual([]);
 
+    const plan = { early: 'a', mid: 'b', late: 'c', now: 'd', thoughts: 'e' };
+    expect(await store.getPlan(runId, CompanyId.parse('c01'))).toBeNull();
+    await store.putPlan({
+      run_id: runId,
+      company: CompanyId.parse('c01'),
+      turn: 1,
+      round: 1,
+      plan,
+    });
+    await store.putPlan({
+      run_id: runId,
+      company: CompanyId.parse('c01'),
+      turn: 2,
+      round: 1,
+      plan: { ...plan, thoughts: 'f' },
+    });
+    expect(await store.getPlan(runId, CompanyId.parse('c01'))).toEqual({ ...plan, thoughts: 'f' });
+    expect((await store.listPlans(runId, CompanyId.parse('c01'))).map((p) => p.turn)).toEqual([
+      1, 2,
+    ]);
+
     await store.setRunStatus(runId, 'ended');
     expect((await store.listRuns()).find((r) => r.id === runId)?.status).toBe('ended');
   });

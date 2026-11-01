@@ -1,6 +1,6 @@
 import { CompanyId, type RunState } from '@agent-economy/schema';
 import { useEffect, useState } from 'react';
-import { fetchNotes } from '../api.ts';
+import { fetchNotes, fetchPlans, type PlanVersion } from '../api.ts';
 import { companyRows, describe, type Log, snapshots, timeline } from '../derive.ts';
 import { cell } from './Contracts.tsx';
 
@@ -21,10 +21,13 @@ export function Company({
   const rows = companyRows(state);
   const [selected, setSelected] = useState<string>(rows[0]?.company.id ?? '');
   const [notes, setNotes] = useState<string>('');
+  const [plans, setPlans] = useState<PlanVersion[]>([]);
   useEffect(() => {
     if (selected === '') return;
     fetchNotes(token, runId, selected).then(setNotes, () => setNotes(''));
+    fetchPlans(token, runId, selected).then(setPlans, () => setPlans([]));
   }, [token, runId, selected]);
+  const latestPlan = plans.findLast((p) => p.turn <= turn)?.plan ?? null;
   const id = CompanyId.safeParse(selected);
   const current = id.success ? rows.find((r) => r.company.id === id.data) : undefined;
   return (
@@ -89,6 +92,33 @@ export function Company({
             <strong>Notes.</strong>{' '}
             <span style={{ whiteSpace: 'pre-wrap' }}>{notes || '(none)'}</span>
           </p>
+          {latestPlan !== null && (
+            <details open>
+              <summary>
+                Plan as of turn {turn} ({plans.filter((p) => p.turn <= turn).length} revisions so
+                far)
+              </summary>
+              <dl style={{ fontSize: 13 }}>
+                {(['early', 'mid', 'late', 'now', 'thoughts'] as const).map((field) => (
+                  <div key={field}>
+                    <dt style={{ fontWeight: 'bold' }}>{field}</dt>
+                    <dd style={{ whiteSpace: 'pre-wrap' }}>{latestPlan[field]}</dd>
+                  </div>
+                ))}
+              </dl>
+              <details>
+                <summary>Thoughts over time</summary>
+                <ul style={{ fontSize: 13 }}>
+                  {plans.map((p) => (
+                    <li key={`${p.turn}-${p.round ?? 0}-${p.plan.thoughts.length}`}>
+                      t{p.turn}
+                      {p.round === null ? '' : ` r${p.round}`}: {p.plan.thoughts}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            </details>
+          )}
           <details>
             <summary>Cash and score by turn</summary>
             <table style={{ borderCollapse: 'collapse', fontSize: 13 }}>

@@ -79,6 +79,8 @@ export const Limits = z.object({
   public_messages_per_round: z.number().int().nonnegative().default(3),
   dms_per_round: z.number().int().nonnegative().default(5),
   max_concurrent_sessions: z.number().int().positive().default(12),
+  /** Advance the round as soon as every company has submitted or spent its budget. The runner turns this off so a session that is still running cannot spill into the next round. */
+  auto_advance: z.boolean().default(true),
 });
 export type Limits = z.infer<typeof Limits>;
 

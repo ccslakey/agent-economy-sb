@@ -9,9 +9,11 @@ import {
   type Message,
   type Observation,
   type Reputation,
+  ROLES,
   type RunState,
+  recipeOf,
 } from '@agent-economy/schema';
-import { capacityOf, reputationOf } from './world.ts';
+import { capacityOf, reputationOf, scoreOf } from './world.ts';
 
 /** What the API learned from the last round resolution, so the agent sees only what is new. */
 export type RoundNews = {
@@ -49,10 +51,18 @@ export function observe(
   }
 
   const lastTurn: Partial<Record<FinalGood, { qty: number; price: number }>> = {};
+  const ownSales: Partial<Record<FinalGood, { qty: number; price: number; proceeds: number }>> = {};
   for (const good of FINAL_GOODS) {
     const clear = state.market.clears.findLast((c) => c.good === good && c.turn === state.turn - 1);
-    if (clear !== undefined) lastTurn[good] = { qty: clear.qty, price: clear.price };
+    if (clear === undefined) continue;
+    lastTurn[good] = { qty: clear.qty, price: clear.price };
+    const sold = clear.sales[company.id];
+    if (sold !== undefined)
+      ownSales[good] = { qty: sold, price: clear.price, proceeds: sold * clear.price };
   }
+  const recipes: Partial<Record<Good, Partial<Record<Good, number>>>> = {};
+  for (const role of company.roles)
+    recipes[ROLES[role].output] = { ...recipeOf(ROLES[role].output) };
 
   const mine = Object.values(state.contracts)
     .filter((k) => k.proposer === company.id || k.counterparty === company.id)
@@ -71,7 +81,11 @@ export function observe(
       inventory: company.inventory,
       capacity,
       pending_orders: company.pending_orders,
+      recipes,
+      net_worth: scoreOf(state, company),
+      last_turn_sales: ownSales,
     },
+    reference_prices: state.config.economy.reference_prices,
     companies: solvent.map((c) => ({
       id: c.id,
       name: c.name,

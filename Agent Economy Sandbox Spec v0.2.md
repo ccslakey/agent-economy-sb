@@ -167,7 +167,7 @@ A run is fully described by one config file plus a seed. All engine randomness (
 - `population`: one entry per company with name, role, model, effort, harness version, and prompt variant. Names come from a pool unrelated to the model, so a name never hints at the model.
 - `economy`: every parameter in the Economy parameters table
 - `knobs`: the experiment variables below
-- `limits`: round tool-call budget, wall-clock backstop, notes size cap (default 4,000 characters), message caps per round, and max concurrent sessions
+- `limits`: round tool-call budget, wall-clock backstop, notes size cap (default 4,000 characters), message caps per round, max concurrent sessions, and whether the API advances a round on its own once everyone has submitted. The runner turns auto-advance off so a session still running when the last batch lands cannot act again in the next round.
 
 **Experiment knobs**
 
@@ -207,6 +207,7 @@ Plain REST over JSON, one bearer token per company. Version one is deliberately 
 | GET      | `/v1/market`                     | NPC clearing prices and quantities, all past turns                      |
 | GET      | `/v1/docs` and `/v1/docs/{path}` | Rules, recipes, and API reference as markdown files                     |
 | GET, PUT | `/v1/notes`                      | The agent's own persistent markdown notes, capped by `limits`           |
+| GET, PUT | `/v1/plan`                       | The agent's standing plan: early, mid, late, now, thoughts. Every revision kept |
 | POST     | `/v1/bug_report`                 | Free-text report of anything confusing or broken                        |
 
 **Action types** (inside one `/v1/actions` batch)
@@ -281,6 +282,7 @@ The world is event-sourced: an append-only `events` table in Postgres is the onl
 | `contracts_current` | Latest state of every contract                                                                            | Projection          |
 | `market_clears`     | Good, quantity, price per turn                                                                            | Projection          |
 | `messages`          | Every public message and DM                                                                               | Projection          |
+| `plan_versions`     | Every revision of every company's plan, with the turn and round it was written                            | Source              |
 
 Projections are rebuildable from `events` at any time and exist only to make the dashboard fast.
 
@@ -347,6 +349,8 @@ Agents in a round run concurrently, up to the max concurrent sessions in `limits
 **Adapters.** An adapter spawns a CLI with the game MCP server and reads its JSON result. Claude Code is the first adapter. Other vendors' headless CLIs can follow for model diversity. Check each plan's terms on automated use before relying on it.
 
 **Scripted baseline bots** use the same API with no model: a greedy producer, an honest trader, a defector, and a random agent. They tune the economy before any LLM run and serve as reference points in every run after.
+
+**The end-of-run report.** When a run ends the runner prints, and the admin API serves, a report with every company's score and reputation, its last plan and thoughts and how many times it revised them, its notes, every bug report it filed with the turn, and its farming answer. Bug reports are not acted on automatically. They are surfaced here for the next porcelain decision.
 
 **The farming loop.** After each run, every LLM agent gets one extra call: what wasted your time, what was confusing, what was missing, and which companies did you think were which model, and why? Treat the answers as noisy data. Most will ask for the game to play itself, but real friction (for example, repeatedly mis-specified contracts) points to the next porcelain to add.
 
@@ -426,6 +430,7 @@ Resolved on Oct 31, 2026. Each entry names the v0.1 question and where the answe
 - **End-of-game inventory.** Scored at 50% of reference price, a tunable economy parameter, so holding unsold output is worth less than selling it and more than scrapping it.
 - **Late cures.** A cured default is its own ledger entry, separate from an open default, so it softens the mark without erasing it. The status is `cured`, replacing `completed_late`, because every late completion passes through a default first.
 - **Reference prices.** Tuned in M3 against scripted bots. At the v0.1 prices the honest mill completed dozens of contracts and still went bankrupt in every seed on a 10 per plank margin. Ingot 55, plank 45, and tool 160 give miner, logger, smelter, mill, and toolmaker about 150 per turn at capacity before upkeep. Over eight seeds with a defector, a greedy producer, a passive company, and a random bot in the roster, honest traders survived 62 of 64 times and scored four times the isolated producer.
+- **Porcelain after M4.** The observation now carries the company's recipes, the reference prices, its net worth, and its own sales from the last turn. Agents keep a structured plan with early, mid, late, now, and thoughts fields, revised over the game with every revision kept, which is the trajectory of their strategy and mood. The round prompt reads the docs and writes the plan on turn 1 and revises the plan on the first round of every later turn. The end-of-run report surfaces bug reports, plans, thoughts, notes, and farming answers.
 - **M4 result.** Six Sonnet companies at low effort, one per role, 15 fixed turns, six concurrent sessions. The 45 rounds took 5 minutes 45 seconds, about 6 seconds per round, with a mean session of 4.8 seconds. 276 sessions read 5.6M input tokens, almost all cache hits, and wrote 90k output tokens, for a nominal API cost of $4.59. Quota consumption on the subscription is not readable from the runner. The game was thin: 13 contracts proposed, 5 accepted, 3 completed, 2 defaulted, the mill bankrupt, three others near zero cash, and only the two roles with an NPC outlet in profit. The farming answers agree on the cause: notes were one line, so each fresh session had no plan and no record, agents did not re-read the docs, and the observation gave no price or outlet for intermediate goods and no per-turn profit. First porcelain to add, in order: the company's recipe and the reference prices in the observation, last turn's own sales and net worth in the observation, and a round prompt that tells the agent to read the docs on turn 1 and to keep its plan and counterparties in its notes. Then rerun at medium effort before comparing models.
 - **Buildout order.** The schema package comes first because every later unit imports it. The three inspector views come before the first LLM run because reading trajectories is the bottleneck. M2 hand-plays through the MCP server rather than curl. M3 opens with a determinism test. Work lands in ten units of about 500 lines, each ending in a rerunnable check.
 - **Demand across runs.** Demand parameters stay fixed and the seed is the replicate. Experiments pair runs by seed across knob settings and start with three to five seeds per setting. A different demand curve is a named profile knob, never an edit to the economy table.

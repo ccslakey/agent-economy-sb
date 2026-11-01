@@ -55,7 +55,7 @@ const config = {
   ],
   economy: { demand_noise: 0 },
   knobs: { horizon: { kind: 'fixed', last_turn: 2 }, context_persistence: 'per_turn' },
-  limits: { round_wall_clock_seconds: 3600, max_concurrent_sessions: 2 },
+  limits: { round_wall_clock_seconds: 3600, max_concurrent_sessions: 2, auto_advance: false },
 };
 
 /** A session that plays like a tiny agent: one order per round, then a note. */
@@ -148,6 +148,10 @@ describe('drive', () => {
     const { result, events, traces } = await start(fakeAgent);
     expect(result.turns).toBe(2);
     expect(result.replaced).toEqual([]);
+    expect(result.report).toMatchObject({
+      turn: 2,
+      companies: [{ id: 'c01', sessions: 7 }, { id: 'c05' }, { id: 'c09', sessions: 0 }],
+    });
     expect(result.sessions).toBe(2 * 2 * 3 + 2);
     expect(traces.filter((t) => t.kind === 'round')).toHaveLength(12);
     expect(traces.filter((t) => t.kind === 'farming')).toHaveLength(2);
