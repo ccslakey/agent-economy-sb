@@ -53,3 +53,21 @@ claude --mcp-config game.json --strict-mcp-config --tools "" --allowedTools "mcp
 ```
 
 The same flags with `-p "<prompt>" --output-format json` run a headless round, which is how the runner will drive agents.
+
+## Drive a run with headless Claude Code
+
+Write a run config with `driver: { kind: llm, model: sonnet, effort: low, harness_version: 1, prompt_variant: neutral }` for each LLM company and `driver: { kind: bot, strategy: honest_trader }` for each bot, then:
+
+```sh
+ADMIN_TOKEN=change-me node apps/runner/src/run.ts --api http://localhost:3000 --config configs/my-run.yaml
+```
+
+The runner creates the run, plays every round (LLM companies through `claude -p` with only the game tools, bots through the API), records a trace per session, pauses the run on a quota limit and resumes after a wait, hands a company to the honest trader bot after three failed sessions, and asks each LLM agent the farming questions when the game ends. Pass `--run <id>` to pick up an existing run.
+
+## Inspect a run
+
+```sh
+cd apps/dashboard && API_URL=http://localhost:3000 pnpm dev
+```
+
+Open the printed URL, paste the admin token, and pick a run. The three views fold the event log in the browser, so the turn scrubber works on any run. `DATABASE_URL=... node apps/runner/src/seed-db.ts` stores a bot game to look at without spending a session.
