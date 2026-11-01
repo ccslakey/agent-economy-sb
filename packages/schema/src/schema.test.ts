@@ -62,9 +62,9 @@ describe('run config', () => {
     expect(cfg.economy.reference_prices).toEqual({
       ore: 15,
       timber: 20,
-      ingot: 45,
-      plank: 30,
-      tool: 140,
+      ingot: 55,
+      plank: 45,
+      tool: 160,
       furniture: 400,
     });
     expect(cfg.knobs.horizon).toEqual({ kind: 'random', min_turns: 30, hazard: 0.1 });
