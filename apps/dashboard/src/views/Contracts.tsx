@@ -1,3 +1,4 @@
+import { contractValue } from '@agent-economy/engine';
 import type { Contract, RunState } from '@agent-economy/schema';
 import { useMemo, useState } from 'react';
 import { byTurn, CONTRACT_MOVES, type Log } from '../derive.ts';
@@ -21,14 +22,35 @@ const obligation = (o: Contract['obligations'][number]) =>
 /** Contract ids are k1, k2, ... so a text sort would put k10 before k2. */
 const contractNumber = (id: string): number => Number(id.slice(1));
 
-const statusTurn = (k: Contract): number =>
-  k.status.status === 'active' ? k.status.accepted_turn : k.status.turn;
+/** Accepted turn to closing turn, or the one turn a never-accepted contract has. */
+const turns = (k: Contract): string => {
+  const s = k.status;
+  if (s.status === 'active') return `T${s.accepted_turn} →`;
+  if (s.status === 'completed' || s.status === 'defaulted') {
+    return `T${s.accepted_turn} → T${s.turn}`;
+  }
+  return `T${s.turn}`;
+};
+
+const goodsText = (k: Contract): string =>
+  k.obligations
+    .map((o) => (o.kind === 'goods' ? `${o.qty} ${o.good}` : `${o.amount} cash`))
+    .join(' for ');
 
 export function Contracts({ log, state, turn }: { log: Log; state: RunState; turn: number }) {
   const [status, setStatus] = useState<(typeof STATUSES)[number]>('all');
+  const [query, setQuery] = useState('');
   const perTurn = useMemo(() => byTurn(log), [log]);
+  const name = (id: string) => state.companies[id as keyof typeof state.companies]?.name ?? id;
+  const q = query.trim().toLowerCase();
+  const matches = (k: Contract) =>
+    q === '' ||
+    [k.id, k.proposer, k.counterparty, name(k.proposer), name(k.counterparty), k.terms_text]
+      .join(' ')
+      .toLowerCase()
+      .includes(q);
   const rows = Object.values(state.contracts)
-    .filter((k) => status === 'all' || k.status.status === status)
+    .filter((k) => (status === 'all' || k.status.status === status) && matches(k))
     .sort((a, b) => contractNumber(a.id) - contractNumber(b.id));
   return (
     <>
@@ -55,8 +77,20 @@ export function Contracts({ log, state, turn }: { log: Log; state: RunState; tur
       <section className="card">
         <div className="card-head">
           <h2>Contract ledger</h2>
-          <div className="muted">
-            {rows.length} contracts as of turn {turn}
+          <div className="toolbar">
+            <span className="muted">
+              {rows.length} contracts as of turn {turn}
+            </span>
+            <label className="field">
+              Search
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Company, contract id or terms"
+                style={{ width: 240 }}
+              />
+            </label>
           </div>
         </div>
         <fieldset className="pills" aria-label="Contract status filter">
@@ -77,11 +111,13 @@ export function Contracts({ log, state, turn }: { log: Log; state: RunState; tur
             <thead>
               <tr>
                 <th>Contract</th>
+                <th>Turns</th>
                 <th>Proposer</th>
                 <th>Counterparty</th>
-                <th>Obligations</th>
+                <th>Goods</th>
+                <th className="num">Value</th>
+                <th>Progress</th>
                 <th>Status</th>
-                <th className="num">Turn</th>
                 <th>Terms</th>
               </tr>
             </thead>
@@ -89,9 +125,12 @@ export function Contracts({ log, state, turn }: { log: Log; state: RunState; tur
               {rows.map((k) => (
                 <tr key={k.id}>
                   <td className="mono">{k.id}</td>
-                  <td className="nowrap">{k.proposer}</td>
-                  <td className="nowrap">{k.counterparty}</td>
-                  <td>{k.obligations.map(obligation).join('; ')}</td>
+                  <td className="mono muted nowrap">{turns(k)}</td>
+                  <td className="nowrap">{name(k.proposer)}</td>
+                  <td className="nowrap">{name(k.counterparty)}</td>
+                  <td className="nowrap">{goodsText(k)}</td>
+                  <td className="num">{fmt(contractValue(state, k.obligations))}</td>
+                  <td className="muted">{k.obligations.map(obligation).join('; ')}</td>
                   <td className="nowrap">
                     <Chip kind={contractChip(k.status.status)}>{k.status.status}</Chip>
                     {k.status.status === 'defaulted' && (
@@ -101,7 +140,6 @@ export function Contracts({ log, state, turn }: { log: Log; state: RunState; tur
                       </span>
                     )}
                   </td>
-                  <td className="num">{statusTurn(k)}</td>
                   <td>{k.terms_text}</td>
                 </tr>
               ))}

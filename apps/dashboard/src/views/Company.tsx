@@ -1,4 +1,4 @@
-import { CompanyId, type RunState } from '@agent-economy/schema';
+import type { CompanyId, RunState } from '@agent-economy/schema';
 import { useEffect, useState } from 'react';
 import { fetchNotes, fetchPlans, type PlanVersion } from '../api.ts';
 import { companyRows, describe, type Log, snapshots, timeline } from '../derive.ts';
@@ -13,6 +13,8 @@ export function Company({
   turn,
   token,
   runId,
+  selected,
+  onSelect,
 }: {
   log: Log;
   state: RunState;
@@ -20,21 +22,22 @@ export function Company({
   turn: number;
   token: string;
   runId: string;
+  selected: CompanyId | null;
+  onSelect: (id: CompanyId) => void;
 }) {
   const rows = companyRows(state);
-  const [selected, setSelected] = useState<string>(rows[0]?.company.id ?? '');
+  const id = selected ?? rows[0]?.company.id ?? null;
   const [notes, setNotes] = useState<string>('');
   const [plans, setPlans] = useState<PlanVersion[]>([]);
   useEffect(() => {
-    if (selected === '') return;
-    fetchNotes(token, runId, selected).then(setNotes, () => setNotes(''));
-    fetchPlans(token, runId, selected).then(setPlans, () => setPlans([]));
-  }, [token, runId, selected]);
+    if (id === null) return;
+    fetchNotes(token, runId, id).then(setNotes, () => setNotes(''));
+    fetchPlans(token, runId, id).then(setPlans, () => setPlans([]));
+  }, [token, runId, id]);
   const seen = plans.filter((p) => p.turn <= turn);
   const latestPlan = seen.at(-1)?.plan ?? null;
-  const id = CompanyId.safeParse(selected);
-  const history = id.success ? snapshots(log, id.data) : [];
-  const current = id.success ? rows.find((r) => r.company.id === id.data) : undefined;
+  const history = id === null ? [] : snapshots(log, id);
+  const current = id === null ? undefined : rows.find((r) => r.company.id === id);
   return (
     <>
       <section className="card">
@@ -61,8 +64,8 @@ export function Company({
               {rows.map((r) => (
                 <tr
                   key={r.company.id}
-                  className={r.company.id === selected ? 'pick selected' : 'pick'}
-                  onClick={() => setSelected(r.company.id)}
+                  className={r.company.id === id ? 'pick selected' : 'pick'}
+                  onClick={() => onSelect(r.company.id)}
                 >
                   <td className="nowrap">
                     <strong>{r.company.name}</strong>{' '}
@@ -99,7 +102,7 @@ export function Company({
           </table>
         </div>
       </section>
-      {id.success && current !== undefined && (
+      {id !== null && current !== undefined && (
         <>
           <section className="card">
             <div className="card-head">
@@ -227,7 +230,7 @@ export function Company({
             <div className="scroll">
               <table className="data">
                 <tbody>
-                  {timeline(log, state, id.data)
+                  {timeline(log, state, id)
                     .filter((e) => e.turn <= turn)
                     .map((e) => (
                       <tr key={e.id}>

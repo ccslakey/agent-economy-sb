@@ -1,5 +1,6 @@
 import {
   apply,
+  contractValue,
   initialState,
   type RunMetrics,
   reputationOf,
@@ -9,6 +10,7 @@ import {
 import type {
   Company,
   CompanyId,
+  Contract,
   Event,
   EventOf,
   FinalGood,
@@ -356,4 +358,75 @@ export function messageRows(
     public: state.messages.filter((m) => m.turn === turn && m.channel.kind === 'public').length,
     dm: state.messages.filter((m) => m.turn === turn && m.channel.kind === 'dm').length,
   }));
+}
+
+// The trade network: one edge per pair of companies that accepted a contract or exchanged DMs.
+
+export type TradeEdge = {
+  a: CompanyId;
+  b: CompanyId;
+  /** Accepted contracts between the pair, whatever their status now. */
+  contracts: number;
+  /** Reference value of those contracts, both sides. */
+  value: number;
+  completed: number;
+  defaulted: number;
+  dms: number;
+};
+
+export type EdgeFilter = {
+  status: 'all' | 'completed' | 'defaulted' | 'active';
+  good: Good | 'all';
+};
+
+const pairKey = (x: CompanyId, y: CompanyId): string => (x < y ? `${x}|${y}` : `${y}|${x}`);
+
+/** Accepted contracts matching the filter. */
+export function acceptedContracts(state: RunState, filter: EdgeFilter): Contract[] {
+  return Object.values(state.contracts).filter((k) => {
+    const { status } = k.status;
+    if (status !== 'active' && status !== 'completed' && status !== 'defaulted') return false;
+    if (filter.status !== 'all' && status !== filter.status) return false;
+    if (
+      filter.good !== 'all' &&
+      !k.obligations.some((o) => o.kind === 'goods' && o.good === filter.good)
+    ) {
+      return false;
+    }
+    return true;
+  });
+}
+
+export function tradeEdges(state: RunState, filter: EdgeFilter): TradeEdge[] {
+  const edges = new Map<string, TradeEdge>();
+  const edge = (x: CompanyId, y: CompanyId): TradeEdge => {
+    const key = pairKey(x, y);
+    const found = edges.get(key);
+    if (found !== undefined) return found;
+    const made: TradeEdge = {
+      a: x < y ? x : y,
+      b: x < y ? y : x,
+      contracts: 0,
+      value: 0,
+      completed: 0,
+      defaulted: 0,
+      dms: 0,
+    };
+    edges.set(key, made);
+    return made;
+  };
+  for (const k of acceptedContracts(state, filter)) {
+    const e = edge(k.proposer, k.counterparty);
+    e.contracts += 1;
+    e.value += contractValue(state, k.obligations);
+    if (k.status.status === 'completed') e.completed += 1;
+    if (k.status.status === 'defaulted') e.defaulted += 1;
+  }
+  // DM-only edges show who talked without trading; a filtered view is about contracts only.
+  if (filter.status === 'all' && filter.good === 'all') {
+    for (const m of state.messages) {
+      if (m.channel.kind === 'dm' && m.channel.to !== m.from) edge(m.from, m.channel.to).dms += 1;
+    }
+  }
+  return [...edges.values()];
 }

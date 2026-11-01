@@ -1,4 +1,4 @@
-import type { Event, RunState } from '@agent-economy/schema';
+import type { CompanyId, Event, RunState } from '@agent-economy/schema';
 import { useEffect, useMemo, useState } from 'react';
 import {
   exportEvents,
@@ -8,10 +8,11 @@ import {
   savedToken,
   saveToken,
 } from './api.ts';
-import { byTurn, type Log, lastTurn, splitLog, stateAt } from './derive.ts';
+import { byTurn, type EdgeFilter, type Log, lastTurn, splitLog, stateAt } from './derive.ts';
 import { Company } from './views/Company.tsx';
 import { Contracts } from './views/Contracts.tsx';
 import { Messages } from './views/Messages.tsx';
+import { Network, NetworkFilters, SelectedCompany } from './views/Network.tsx';
 import { Overview } from './views/Overview.tsx';
 import { Runs } from './views/Runs.tsx';
 
@@ -59,6 +60,8 @@ export function App() {
   const [log, setLog] = useState<Log | null>(null);
   const [turn, setTurn] = useState<number | null>(null);
   const [page, setPage] = useState<Page>('compare');
+  const [company, setCompany] = useState<CompanyId | null>(null);
+  const [filter, setFilter] = useState<EdgeFilter>({ status: 'all', good: 'all' });
 
   useEffect(() => {
     if (token === '') return;
@@ -96,7 +99,12 @@ export function App() {
 
   const openRun = (id: string | null) => {
     setRunId(id);
+    setCompany(null);
     setPage(id === null ? 'compare' : 'overview');
+  };
+  const openCompany = (id: CompanyId) => {
+    setCompany(id);
+    setPage('companies');
   };
   const ready = runId !== null && log !== null && state !== null && turn !== null;
   const shown: Page = ready ? page : 'compare';
@@ -199,10 +207,33 @@ export function App() {
         {ready && run !== undefined && shown === 'overview' && (
           <Overview log={log} state={state} turn={turn} run={run} token={token} />
         )}
-        {ready && shown === 'network' && <Contracts log={log} state={state} turn={turn} />}
+        {ready && shown === 'network' && (
+          <>
+            <NetworkFilters filter={filter} onChange={setFilter} />
+            <div className="row">
+              <Network state={state} filter={filter} selected={company} onSelect={setCompany} />
+              <SelectedCompany
+                state={state}
+                filter={filter}
+                selected={company}
+                onSelect={setCompany}
+                onOpen={openCompany}
+              />
+            </div>
+            <Contracts log={log} state={state} turn={turn} />
+          </>
+        )}
         {ready && shown === 'companies' && (
           <>
-            <Company log={log} state={state} turn={turn} token={token} runId={runId} />
+            <Company
+              log={log}
+              state={state}
+              turn={turn}
+              token={token}
+              runId={runId}
+              selected={company}
+              onSelect={setCompany}
+            />
             <Messages state={state} turn={turn} turns={turns} />
           </>
         )}

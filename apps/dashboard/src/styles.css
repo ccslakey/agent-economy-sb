@@ -461,3 +461,25 @@ fieldset.pills {
   height: 10px;
   border-radius: 5px;
 }
+
+/* Trade network */
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.stat {
+  flex: 1 1 90px;
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.cp-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px solid var(--hair);
+  font-size: 13px;
+}
