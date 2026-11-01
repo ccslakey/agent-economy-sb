@@ -64,6 +64,14 @@ ADMIN_TOKEN=change-me node apps/runner/src/run.ts --api http://localhost:3000 --
 
 The runner creates the run, plays every round (LLM companies through `claude -p` with only the game tools, bots through the API), records a trace per session, pauses the run on a quota limit and resumes after a wait, hands a company to the honest trader bot after three failed sessions, and asks each LLM agent the farming questions when the game ends. Pass `--run <id>` to pick up an existing run.
 
+## Start the API
+
+```sh
+DATABASE_URL=postgres://localhost/agent_economy ADMIN_TOKEN=change-me PORT=3000 pnpm server
+```
+
+`pnpm server` runs the API under nodemon and restarts it when anything under the API, engine, schema, or agent docs changes.
+
 ## Inspect a run
 
 ```sh

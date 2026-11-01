@@ -1,0 +1,7 @@
+{
+  "watch": ["apps/api/src", "packages/engine/src", "packages/schema/src", "docs/agent"],
+  "ext": "ts,md",
+  "ignore": ["**/*.test.ts"],
+  "stdin": false,
+  "exec": "node apps/api/src/main.ts"
+}
