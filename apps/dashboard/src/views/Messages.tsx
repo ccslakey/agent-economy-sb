@@ -1,8 +1,7 @@
-import type { RunState } from '@agent-economy/schema';
+import type { CompanyId, RunState } from '@agent-economy/schema';
 import { useMemo, useState } from 'react';
 import { messageRows } from '../derive.ts';
 import { LineChart } from './Chart.tsx';
-import { cell } from './Contracts.tsx';
 
 export function Messages({
   state,
@@ -27,8 +26,36 @@ export function Messages({
           m.from === participant ||
           (m.channel.kind === 'dm' && m.channel.to === participant)),
     );
+  const name = (id: CompanyId) => state.companies[id]?.name ?? id;
   return (
-    <section>
+    <section className="card">
+      <div className="card-head">
+        <h2>Messages</h2>
+        <div className="toolbar">
+          <label className="field">
+            <input
+              type="checkbox"
+              checked={onlyTurn}
+              onChange={(e) => setOnlyTurn(e.target.checked)}
+            />
+            only turn {turn}
+          </label>
+          <label className="field">
+            Participant
+            <select value={participant} onChange={(e) => setParticipant(e.target.value)}>
+              <option value="">anyone</option>
+              {Object.values(state.companies)
+                .sort((a, b) => (a.name < b.name ? -1 : 1))
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <span className="muted">{rows.length} messages</span>
+        </div>
+      </div>
       <LineChart
         title="Messages per turn"
         x={turns}
@@ -38,52 +65,20 @@ export function Messages({
           { label: 'dm', points: volume.map((r) => r.dm) },
         ]}
       />
-      <p>
-        <label>
-          <input
-            type="checkbox"
-            checked={onlyTurn}
-            onChange={(e) => setOnlyTurn(e.target.checked)}
-          />{' '}
-          only turn {turn}
-        </label>{' '}
-        <label>
-          participant{' '}
-          <select value={participant} onChange={(e) => setParticipant(e.target.value)}>
-            <option value="">anyone</option>
-            {Object.keys(state.companies)
-              .sort()
-              .map((id) => (
-                <option key={id} value={id}>
-                  {id}
-                </option>
-              ))}
-          </select>
-        </label>{' '}
-        {rows.length} messages
-      </p>
-      <table style={{ borderCollapse: 'collapse', fontSize: 13 }}>
-        <thead>
-          <tr>
-            {['turn', 'round', 'from', 'channel', 'text'].map((h) => (
-              <th key={h} style={cell}>
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(({ m, position }) => (
-            <tr key={position}>
-              <td style={cell}>{m.turn}</td>
-              <td style={cell}>{m.round}</td>
-              <td style={cell}>{m.from}</td>
-              <td style={cell}>{m.channel.kind === 'dm' ? `dm to ${m.channel.to}` : 'public'}</td>
-              <td style={cell}>{m.text}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {rows.map(({ m, position }) => (
+          <div key={position} className={m.channel.kind === 'dm' ? 'msg msg-dm' : 'msg'}>
+            <div className="msg-head">
+              <strong>{name(m.from)}</strong>
+              <span>{m.channel.kind === 'dm' ? `DM to ${name(m.channel.to)}` : 'Public'}</span>
+              <span className="mono msg-when">
+                T{m.turn} · R{m.round}
+              </span>
+            </div>
+            <div className="msg-text">{m.text}</div>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }

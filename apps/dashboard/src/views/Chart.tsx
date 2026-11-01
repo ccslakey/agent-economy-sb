@@ -74,8 +74,13 @@ export function LineChart({
       .join(' ');
   return (
     <figure className="chart">
-      <figcaption>{title}</figcaption>
-      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={title}>
+      {title !== '' && <figcaption>{title}</figcaption>}
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={title}
+        style={{ maxWidth: width * 1.5 }}
+      >
         {yTicks.map((t) => (
           <g key={t}>
             <line x1={pad.left} x2={width - pad.right} y1={sy(t)} y2={sy(t)} stroke="#E8ECF1" />

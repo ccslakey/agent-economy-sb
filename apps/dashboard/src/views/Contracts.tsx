@@ -2,6 +2,7 @@ import type { Contract, RunState } from '@agent-economy/schema';
 import { useMemo, useState } from 'react';
 import { byTurn, CONTRACT_MOVES, type Log } from '../derive.ts';
 import { LineChart } from './Chart.tsx';
+import { Chip, contractChip, fmt } from './ui.tsx';
 
 const STATUSES = [
   'all',
@@ -30,69 +31,84 @@ export function Contracts({ log, state, turn }: { log: Log; state: RunState; tur
     .filter((k) => status === 'all' || k.status.status === status)
     .sort((a, b) => contractNumber(a.id) - contractNumber(b.id));
   return (
-    <section>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
-        <LineChart
-          title="Contracts per turn"
-          x={perTurn.map((r) => r.turn)}
-          marker={turn}
-          series={CONTRACT_MOVES.map((move) => ({
-            label: move,
-            points: perTurn.map((r) => r.contracts[move]),
-          }))}
-        />
-        <LineChart
-          title="Cash destroyed by penalties"
-          x={perTurn.map((r) => r.turn)}
-          marker={turn}
-          series={[{ label: 'penalties', points: perTurn.map((r) => r.penalties) }]}
-        />
-      </div>
-      <p>
-        <label>
-          Status{' '}
-          <select value={status} onChange={(e) => setStatus(e.target.value as typeof status)}>
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </label>{' '}
-        {rows.length} contracts
-      </p>
-      <table style={{ borderCollapse: 'collapse', fontSize: 13 }}>
-        <thead>
-          <tr>
-            {['id', 'proposer', 'counterparty', 'obligations', 'status', 'turn', 'terms'].map(
-              (h) => (
-                <th key={h} style={cell}>
-                  {h}
-                </th>
-              ),
-            )}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((k) => (
-            <tr key={k.id}>
-              <td style={cell}>{k.id}</td>
-              <td style={cell}>{k.proposer}</td>
-              <td style={cell}>{k.counterparty}</td>
-              <td style={cell}>{k.obligations.map(obligation).join('; ')}</td>
-              <td style={cell}>
-                {k.status.status}
-                {k.status.status === 'defaulted' &&
-                  ` by ${k.status.by.join(', ')} (${k.status.unmet_value})`}
-              </td>
-              <td style={cell}>{statusTurn(k)}</td>
-              <td style={cell}>{k.terms_text}</td>
-            </tr>
+    <>
+      <section className="card">
+        <h2>Contract activity</h2>
+        <div className="row">
+          <LineChart
+            title="Contracts per turn"
+            x={perTurn.map((r) => r.turn)}
+            marker={turn}
+            series={CONTRACT_MOVES.map((move) => ({
+              label: move,
+              points: perTurn.map((r) => r.contracts[move]),
+            }))}
+          />
+          <LineChart
+            title="Cash destroyed by penalties"
+            x={perTurn.map((r) => r.turn)}
+            marker={turn}
+            series={[{ label: 'penalties', points: perTurn.map((r) => r.penalties) }]}
+          />
+        </div>
+      </section>
+      <section className="card">
+        <div className="card-head">
+          <h2>Contract ledger</h2>
+          <div className="muted">
+            {rows.length} contracts as of turn {turn}
+          </div>
+        </div>
+        <fieldset className="pills" aria-label="Contract status filter">
+          {STATUSES.map((s) => (
+            <button
+              key={s}
+              type="button"
+              className="pill"
+              aria-pressed={status === s}
+              onClick={() => setStatus(s)}
+            >
+              {s}
+            </button>
           ))}
-        </tbody>
-      </table>
-    </section>
+        </fieldset>
+        <div className="scroll">
+          <table className="data">
+            <thead>
+              <tr>
+                <th>Contract</th>
+                <th>Proposer</th>
+                <th>Counterparty</th>
+                <th>Obligations</th>
+                <th>Status</th>
+                <th className="num">Turn</th>
+                <th>Terms</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((k) => (
+                <tr key={k.id}>
+                  <td className="mono">{k.id}</td>
+                  <td className="nowrap">{k.proposer}</td>
+                  <td className="nowrap">{k.counterparty}</td>
+                  <td>{k.obligations.map(obligation).join('; ')}</td>
+                  <td className="nowrap">
+                    <Chip kind={contractChip(k.status.status)}>{k.status.status}</Chip>
+                    {k.status.status === 'defaulted' && (
+                      <span className="muted">
+                        {' '}
+                        by {k.status.by.join(', ')} · {fmt(k.status.unmet_value)} unmet
+                      </span>
+                    )}
+                  </td>
+                  <td className="num">{statusTurn(k)}</td>
+                  <td>{k.terms_text}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </>
   );
 }
-
-export const cell = { border: '1px solid #ccc', padding: '2px 6px', textAlign: 'left' } as const;
