@@ -28,8 +28,10 @@ function ticks(min: number, max: number): number[] {
   const power = 10 ** Math.floor(Math.log10(rough));
   const step = [1, 2, 5, 10].map((m) => m * power).find((s) => s >= rough) ?? power;
   const out: number[] = [];
-  for (let v = Math.floor(min / step) * step; v <= max + step / 2; v += step) out.push(v);
-  return out;
+  for (let v = Math.floor(min / step) * step; ; v += step) {
+    out.push(v);
+    if (v >= max) return out;
+  }
 }
 
 export function LineChart({
