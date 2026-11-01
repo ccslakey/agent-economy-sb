@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fold, reputationOf, scoreOf } from '@agent-economy/engine';
 import {
   type ActionError,
   BotStrategy,
   type Company,
   CompanyId,
+  Plan,
   RunConfig,
   RunId,
 } from '@agent-economy/schema';
@@ -185,6 +187,30 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
   });
 
   const NotesBody = z.object({ text: z.string() });
+
+  app.get('/v1/plan', async (request) => {
+    const { game, company } = request.agent;
+    return { plan: await options.store.getPlan(game.id, company.id) };
+  });
+
+  app.put('/v1/plan', async (request, reply) => {
+    const { game, company } = request.agent;
+    const body = Plan.safeParse(request.body);
+    if (!body.success) {
+      return fail(reply, {
+        code: 'INVALID_ACTION',
+        reason: `plan needs early, mid, late, now, and thoughts, each under 600 characters: ${z.prettifyError(body.error)}`,
+      });
+    }
+    await options.store.putPlan({
+      run_id: game.id,
+      company: company.id,
+      turn: game.state.turn,
+      round: game.state.phase.kind === 'round' ? game.state.phase.round : null,
+      plan: body.data,
+    });
+    return { plan: body.data };
+  });
 
   app.put('/v1/notes', async (request, reply) => {
     const { game, company } = request.agent;
@@ -397,6 +423,74 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
       actor: body.data.company,
     });
     return { ok: true };
+  });
+
+  app.get<{ Params: { id: string; company: string } }>(
+    '/admin/runs/:id/plans/:company',
+    async (request, reply) => {
+      if (!(await admin(request, reply))) return;
+      const id = RunId.safeParse(request.params.id);
+      const company = CompanyId.safeParse(request.params.company);
+      if (!id.success || !company.success) {
+        return reply.code(404).send({ code: 'NOT_FOUND', reason: 'no such run or company' });
+      }
+      return { plans: await options.store.listPlans(id.data, company.data) };
+    },
+  );
+
+  // The end-of-run report: scores, each company's last plan and thoughts, its notes, every bug
+  // report it filed, and its farming answer. Built from the store so it works for ended runs.
+  app.get<{ Params: { id: string } }>('/admin/runs/:id/report', async (request, reply) => {
+    if (!(await admin(request, reply))) return;
+    const id = RunId.safeParse(request.params.id);
+    const run = id.success ? await options.store.getRun(id.data) : null;
+    if (!id.success || run === null) {
+      return reply.code(404).send({ code: 'NOT_FOUND', reason: 'no such run' });
+    }
+    const [started, ...rest] = await options.store.events(id.data);
+    if (started?.type !== 'run_started') {
+      return reply.code(404).send({ code: 'NOT_FOUND', reason: 'run has no events' });
+    }
+    const state = fold(started, rest);
+    const traces = await options.store.listTraces(id.data);
+    const companies = await Promise.all(
+      Object.values(state.companies)
+        .sort((a, b) => (a.id < b.id ? -1 : 1))
+        .map(async (c) => {
+          const entry = run.config.population.find((p) => p.id === c.id);
+          const farming = traces.findLast((t) => t.company === c.id && t.kind === 'farming');
+          return {
+            id: c.id,
+            name: c.name,
+            roles: c.roles,
+            driver: entry?.driver ?? null,
+            score: scoreOf(state, c),
+            standing: c.standing,
+            reputation: reputationOf(state, c),
+            plan: await options.store.getPlan(id.data, c.id),
+            plan_revisions: (await options.store.listPlans(id.data, c.id)).length,
+            notes: await options.store.getNotes(id.data, c.id),
+            bug_reports: rest.flatMap((e) =>
+              e.type === 'bug_report_filed' && e.actor === c.id
+                ? [{ turn: e.turn, round: e.round, text: e.payload.text }]
+                : [],
+            ),
+            farming:
+              farming !== undefined && typeof farming.result.result === 'string'
+                ? farming.result.result
+                : null,
+            sessions: traces.filter((t) => t.company === c.id).length,
+          };
+        }),
+    );
+    return {
+      run_id: id.data,
+      experiment_id: run.config.experiment_id,
+      status: run.status,
+      turn: state.turn,
+      phase: state.phase,
+      companies,
+    };
   });
 
   app.addHook('onClose', async () => {

@@ -206,8 +206,8 @@ describe('agent routes', () => {
     const market = await api().inject({ method: 'GET', url: '/v1/market', headers: run.as('c05') });
     expect(market.json()).toEqual({
       clears: [
-        { turn: 1, good: 'tool', qty: 0, price: 240 },
-        { turn: 1, good: 'furniture', qty: 0, price: 640 },
+        { turn: 1, good: 'tool', qty: 0, price: 240, sales: {} },
+        { turn: 1, good: 'furniture', qty: 0, price: 640, sales: {} },
       ],
     });
     for (let i = 0; i < 3; i++) await run.advance();
@@ -346,6 +346,74 @@ describe('agent routes', () => {
     });
     const types = (events.json() as { events: { type: string }[] }).events.map((e) => e.type);
     expect(types).toEqual(['bug_report_filed']);
+  });
+
+  it('keeps every plan revision and builds the end-of-run report', async () => {
+    const run = await startRun();
+    const empty = await api().inject({ method: 'GET', url: '/v1/plan', headers: run.as('c01') });
+    expect(empty.json()).toEqual({ plan: null });
+    const bad = await api().inject({
+      method: 'PUT',
+      url: '/v1/plan',
+      headers: run.as('c01'),
+      payload: { early: 'x' },
+    });
+    expect(bad.json()).toMatchObject({ code: 'INVALID_ACTION' });
+    const plan = {
+      early: 'mine and sell ore',
+      mid: 'find a smelter',
+      late: 'hoard',
+      now: 'mining',
+      thoughts: 'quiet so far',
+    };
+    await api().inject({ method: 'PUT', url: '/v1/plan', headers: run.as('c01'), payload: plan });
+    await api().inject({
+      method: 'PUT',
+      url: '/v1/plan',
+      headers: run.as('c01'),
+      payload: { ...plan, thoughts: 'nobody is buying' },
+    });
+    const latest = await api().inject({ method: 'GET', url: '/v1/plan', headers: run.as('c01') });
+    expect(latest.json()).toEqual({ plan: { ...plan, thoughts: 'nobody is buying' } });
+    const history = await api().inject({
+      method: 'GET',
+      url: `/admin/runs/${run.run_id}/plans/c01`,
+      headers: { 'x-admin-token': 'admin' },
+    });
+    expect(
+      (
+        history.json() as { plans: { turn: number; round: number; plan: { thoughts: string } }[] }
+      ).plans.map((p) => [p.turn, p.round, p.plan.thoughts]),
+    ).toEqual([
+      [1, 1, 'quiet so far'],
+      [1, 1, 'nobody is buying'],
+    ]);
+    await api().inject({
+      method: 'POST',
+      url: '/v1/bug_report',
+      headers: run.as('c01'),
+      payload: { text: 'where do I sell ore' },
+    });
+    const report = await api().inject({
+      method: 'GET',
+      url: `/admin/runs/${run.run_id}/report`,
+      headers: { 'x-admin-token': 'admin' },
+    });
+    expect(report.json()).toMatchObject({
+      experiment_id: 'api-test',
+      turn: 1,
+      companies: [
+        {
+          id: 'c01',
+          plan: { ...plan, thoughts: 'nobody is buying' },
+          plan_revisions: 2,
+          bug_reports: [{ turn: 1, round: 1, text: 'where do I sell ore' }],
+          farming: null,
+          score: 600 + 90,
+        },
+        { id: 'c05', plan: null, plan_revisions: 0, bug_reports: [] },
+      ],
+    });
   });
 
   it('pauses the clock and resumes, and reloads live runs from the store on restart', async () => {

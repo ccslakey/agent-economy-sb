@@ -1,8 +1,8 @@
-import { CompanyId, Event, RunConfig, RunId } from '@agent-economy/schema';
+import { CompanyId, Event, Plan, RunConfig, RunId } from '@agent-economy/schema';
 import { type Generated, type JSONColumnType, Kysely, PostgresDialect, sql } from 'kysely';
 import pg from 'pg';
 import { z } from 'zod';
-import type { RunRow, RunStatus, Store, TraceRow } from './store.ts';
+import type { PlanVersion, RunRow, RunStatus, Store, TraceRow } from './store.ts';
 
 // Postgres through Kysely: typed SQL with the event log in plain sight. Rows are parsed back
 // through the schema package on the way out, so a bad row fails loudly instead of folding.
@@ -54,11 +54,22 @@ type TracesTable = {
   created_at: Generated<Date>;
 };
 
+type PlansTable = {
+  id: Generated<number>;
+  run_id: string;
+  company_id: string;
+  turn: number;
+  round: number | null;
+  plan: JSONColumnType<Record<string, unknown>>;
+  created_at: Generated<Date>;
+};
+
 type Database = {
   runs: RunsTable;
   events: EventsTable;
   notes: NotesTable;
   agent_traces: TracesTable;
+  plan_versions: PlansTable;
 };
 
 const Status = z.enum(['running', 'paused', 'ended']);
@@ -139,6 +150,53 @@ export class PostgresStore implements Store {
         duration_ms integer not null,
         created_at timestamptz not null default now()
       )`.execute(this.db);
+    await sql`
+      create table if not exists plan_versions (
+        id serial primary key,
+        run_id text not null references runs(id),
+        company_id text not null,
+        turn integer not null,
+        round integer,
+        plan jsonb not null,
+        created_at timestamptz not null default now()
+      )`.execute(this.db);
+  }
+
+  async putPlan(version: PlanVersion): Promise<void> {
+    await this.db
+      .insertInto('plan_versions')
+      .values({
+        run_id: version.run_id,
+        company_id: version.company,
+        turn: version.turn,
+        round: version.round,
+        plan: JSON.stringify(version.plan),
+      })
+      .execute();
+  }
+
+  async getPlan(runId: RunId, company: CompanyId): Promise<Plan | null> {
+    const row = await this.db
+      .selectFrom('plan_versions')
+      .select('plan')
+      .where('run_id', '=', runId)
+      .where('company_id', '=', company)
+      .orderBy('id', 'desc')
+      .executeTakeFirst();
+    return row === undefined ? null : Plan.parse(row.plan);
+  }
+
+  async listPlans(runId: RunId, company?: CompanyId): Promise<PlanVersion[]> {
+    let query = this.db.selectFrom('plan_versions').selectAll().where('run_id', '=', runId);
+    if (company !== undefined) query = query.where('company_id', '=', company);
+    const rows = await query.orderBy('id').execute();
+    return rows.map((row) => ({
+      run_id: RunId.parse(row.run_id),
+      company: CompanyId.parse(row.company_id),
+      turn: row.turn,
+      round: row.round,
+      plan: Plan.parse(row.plan),
+    }));
   }
 
   async putTrace(trace: TraceRow): Promise<void> {
