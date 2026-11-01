@@ -54,6 +54,7 @@ describe.skipIf(url === undefined)('PostgresStore', () => {
     play({ kind: 'resolve_round' });
     play({ kind: 'operations' });
     await store.append(runId, log);
+    expect(await store.lastTurn(runId)).toBe(log.at(-1)?.turn);
 
     const back = await store.events(runId);
     expect(back).toEqual(log);

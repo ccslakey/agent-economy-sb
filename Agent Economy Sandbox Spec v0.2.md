@@ -416,6 +416,8 @@ Each unit is one pull request of about 500 lines or less and ends in a check tha
 8. Scripted bots and the determinism test, then the tuning loop as many small commits against the M3 criteria.
 9. The three read-only inspector views.
 10. The Claude Code adapter, quota pauses, bot handoff, and trace capture, then the M4 run.
+11. Dashboard v1, first half: the run list with knob, population, and cost columns, the world overview, and the leaderboard, drawn as inline SVG line charts over the event fold with the turn scrubber as a marker.
+12. Dashboard v1, second half: charted contract and message views, a cash and score chart in the company drill-down, and the cost panel.
 
 ## Decisions
 

@@ -245,6 +245,10 @@ describe('agent routes', () => {
     expect((list.json() as { runs: { status: string; phase: unknown }[] }).runs[0]).toMatchObject({
       status: 'ended',
       phase: { kind: 'ended' },
+      turn: 2,
+      knobs: { enforcement: 'on' },
+      population: { llm: 0, bot: 2, models: [] },
+      cost: { sessions: 0, tokens_in: 0, tokens_out: 0, cost_usd: 0 },
     });
     const closed = await api().inject({
       method: 'GET',
@@ -267,6 +271,12 @@ describe('agent routes', () => {
     expect((archived.json() as { events: { type: string }[] }).events.at(-1)?.type).toBe(
       'run_ended',
     );
+    const relisted = await api().inject({
+      method: 'GET',
+      url: '/admin/runs',
+      headers: { 'x-admin-token': 'admin' },
+    });
+    expect((relisted.json() as { runs: { turn: number | null }[] }).runs[0]?.turn).toBe(2);
   });
 
   it('delivers contracts and messages at round end and lists them', async () => {

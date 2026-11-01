@@ -54,6 +54,8 @@ export interface Store {
   append(runId: RunId, events: readonly Event[]): Promise<void>;
   /** Events with seq greater than `afterSeq`, in seq order. */
   events(runId: RunId, afterSeq?: number): Promise<Event[]>;
+  /** The turn of the last event, or null before the first. Cheaper than loading the log for a listing. */
+  lastTurn(runId: RunId): Promise<number | null>;
   getNotes(runId: RunId, company: CompanyId): Promise<string>;
   putNotes(runId: RunId, company: CompanyId, text: string): Promise<void>;
 }
@@ -119,6 +121,9 @@ export class MemoryStore implements Store {
     return (this.log.get(runId) ?? [])
       .filter((e) => e.seq > afterSeq)
       .map((e) => structuredClone(e));
+  }
+  async lastTurn(runId: RunId): Promise<number | null> {
+    return this.log.get(runId)?.at(-1)?.turn ?? null;
   }
   async getNotes(runId: RunId, company: CompanyId): Promise<string> {
     return this.notes.get(`${runId}:${company}`) ?? '';
