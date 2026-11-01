@@ -42,7 +42,18 @@ export type TurnRow = {
   output: Partial<Record<Good, number>>;
   /** Cash destroyed by penalties during the turn. */
   penalties: number;
+  /** Contract lifecycle events during the turn. */
+  contracts: Record<ContractMove, number>;
 };
+
+export const CONTRACT_MOVES = ['proposed', 'accepted', 'completed', 'defaulted'] as const;
+export type ContractMove = (typeof CONTRACT_MOVES)[number];
+const noMoves = (): Record<ContractMove, number> => ({
+  proposed: 0,
+  accepted: 0,
+  completed: 0,
+  defaulted: 0,
+});
 
 /** One row per closed turn. The final turn closes with `run_ended` instead of `turn_closed`. */
 export function byTurn(log: Log): TurnRow[] {
@@ -50,16 +61,25 @@ export function byTurn(log: Log): TurnRow[] {
   let state = initialState(log.started);
   let output: Partial<Record<Good, number>> = {};
   let penalties = 0;
+  let contracts = noMoves();
   for (const event of log.rest) {
     state = apply(state, event);
     if (event.type === 'extraction_completed' || event.type === 'production_completed') {
       output[event.payload.good] = (output[event.payload.good] ?? 0) + event.payload.qty;
     } else if (event.type === 'penalty_charged') {
       penalties += event.payload.amount;
+    } else if (
+      event.type === 'contract_proposed' ||
+      event.type === 'contract_accepted' ||
+      event.type === 'contract_completed' ||
+      event.type === 'contract_defaulted'
+    ) {
+      contracts[event.type.slice('contract_'.length) as ContractMove] += 1;
     } else if (event.type === 'turn_closed' || event.type === 'run_ended') {
-      rows.push({ turn: event.turn, state, output, penalties });
+      rows.push({ turn: event.turn, state, output, penalties, contracts });
       output = {};
       penalties = 0;
+      contracts = noMoves();
     }
   }
   return rows;
@@ -283,4 +303,16 @@ export function describe(event: Event): string {
       return _exhaustive;
     }
   }
+}
+
+/** Public and private message counts per turn, from the state's message list. */
+export function messageRows(
+  state: RunState,
+  turns: number[],
+): { turn: number; public: number; dm: number }[] {
+  return turns.map((turn) => ({
+    turn,
+    public: state.messages.filter((m) => m.turn === turn && m.channel.kind === 'public').length,
+    dm: state.messages.filter((m) => m.turn === turn && m.channel.kind === 'dm').length,
+  }));
 }

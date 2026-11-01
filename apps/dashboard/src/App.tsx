@@ -1,15 +1,16 @@
 import type { Event, RunState } from '@agent-economy/schema';
 import { useEffect, useMemo, useState } from 'react';
 import { fetchEvents, listRuns, type RunListing, savedToken, saveToken } from './api.ts';
-import { type Log, lastTurn, splitLog, stateAt } from './derive.ts';
+import { byTurn, type Log, lastTurn, splitLog, stateAt } from './derive.ts';
 import { Company } from './views/Company.tsx';
 import { Contracts } from './views/Contracts.tsx';
+import { Cost } from './views/Cost.tsx';
 import { Leaderboard } from './views/Leaderboard.tsx';
 import { Messages } from './views/Messages.tsx';
 import { Runs } from './views/Runs.tsx';
 import { World } from './views/World.tsx';
 
-const VIEWS = ['world', 'leaderboard', 'contracts', 'messages', 'company'] as const;
+const VIEWS = ['world', 'leaderboard', 'contracts', 'messages', 'company', 'cost'] as const;
 type View = (typeof VIEWS)[number];
 
 export function App() {
@@ -44,6 +45,7 @@ export function App() {
     () => (log === null ? null : stateAt(log, turn)),
     [log, turn],
   );
+  const turns = useMemo(() => (log === null ? [] : byTurn(log).map((r) => r.turn)), [log]);
 
   return (
     <main style={{ fontFamily: 'system-ui, sans-serif', padding: 16, maxWidth: 1400 }}>
@@ -108,11 +110,12 @@ export function App() {
           </nav>
           {view === 'world' && <World log={log} state={state} turn={turn} />}
           {view === 'leaderboard' && <Leaderboard log={log} turn={turn} />}
-          {view === 'contracts' && <Contracts state={state} />}
-          {view === 'messages' && <Messages state={state} turn={turn} />}
+          {view === 'contracts' && <Contracts log={log} state={state} turn={turn} />}
+          {view === 'messages' && <Messages state={state} turn={turn} turns={turns} />}
           {view === 'company' && runId !== null && (
             <Company log={log} state={state} turn={turn} token={token} runId={runId} />
           )}
+          {view === 'cost' && runId !== null && <Cost token={token} runId={runId} />}
         </>
       )}
     </main>

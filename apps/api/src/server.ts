@@ -14,7 +14,7 @@ import {
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { Game, type GameOptions } from './game.ts';
-import type { RunRow, Store } from './store.ts';
+import type { RunRow, Store, TraceRow } from './store.ts';
 
 // The only boundary agents cross. Agent routes under /v1 take a bearer token per company and
 // spend one tool call each. Admin routes create and drive runs and take the admin token.
@@ -425,6 +425,45 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
     if (!id.success) return reply.code(404).send({ code: 'NOT_FOUND', reason: 'no such run' });
     const { company } = CompanyQuery.parse(request.query);
     return { traces: await options.store.listTraces(id.data, company) };
+  });
+
+  /** Sessions, tokens, cost, and latency rolled up by company and by model. The traces themselves stay on the traces route. */
+  app.get<{ Params: { id: string } }>('/admin/runs/:id/cost', async (request, reply) => {
+    if (!(await admin(request, reply))) return;
+    const id = RunId.safeParse(request.params.id);
+    if (!id.success) return reply.code(404).send({ code: 'NOT_FOUND', reason: 'no such run' });
+    const traces = await options.store.listTraces(id.data);
+    type Bucket = {
+      sessions: number;
+      tokens_in: number;
+      tokens_out: number;
+      cost_usd: number;
+      duration_ms: number;
+    };
+    const rollup = (key: (t: TraceRow) => string): Record<string, Bucket> => {
+      const out: Record<string, Bucket> = {};
+      for (const t of traces) {
+        const bucket = out[key(t)] ?? {
+          sessions: 0,
+          tokens_in: 0,
+          tokens_out: 0,
+          cost_usd: 0,
+          duration_ms: 0,
+        };
+        out[key(t)] = bucket;
+        bucket.sessions += 1;
+        bucket.tokens_in += t.tokens_in;
+        bucket.tokens_out += t.tokens_out;
+        bucket.cost_usd += t.cost_usd;
+        bucket.duration_ms += t.duration_ms;
+      }
+      return out;
+    };
+    return {
+      by_company: rollup((t) => t.company),
+      by_model: rollup((t) => t.model ?? 'unknown'),
+      by_turn: rollup((t) => String(t.turn)),
+    };
   });
 
   const ReplaceBody = z.object({ company: CompanyId, strategy: BotStrategy, reason: z.string() });
