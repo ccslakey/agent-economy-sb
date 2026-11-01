@@ -1,4 +1,4 @@
-import type { CompanyId, Event, Plan, RunConfig, RunId } from '@agent-economy/schema';
+import type { CompanyId, Event, Plan, RunConfig, RunId, RunMoments } from '@agent-economy/schema';
 
 // The only persistence boundary. Events are the source of truth; runs and notes are the two
 // small tables beside them. MemoryStore backs tests, PostgresStore backs real runs.
@@ -58,12 +58,15 @@ export interface Store {
   lastTurn(runId: RunId): Promise<number | null>;
   getNotes(runId: RunId, company: CompanyId): Promise<string>;
   putNotes(runId: RunId, company: CompanyId, text: string): Promise<void>;
+  getMoments(runId: RunId): Promise<RunMoments | null>;
+  putMoments(runId: RunId, moments: RunMoments): Promise<void>;
 }
 
 export class MemoryStore implements Store {
   private readonly runs = new Map<RunId, RunRow>();
   private readonly log = new Map<RunId, Event[]>();
   private readonly notes = new Map<string, string>();
+  private readonly moments = new Map<RunId, RunMoments>();
   private readonly traces: TraceRow[] = [];
   private readonly plans: PlanVersion[] = [];
 
@@ -130,5 +133,12 @@ export class MemoryStore implements Store {
   }
   async putNotes(runId: RunId, company: CompanyId, text: string): Promise<void> {
     this.notes.set(`${runId}:${company}`, text);
+  }
+  async getMoments(runId: RunId): Promise<RunMoments | null> {
+    const found = this.moments.get(runId);
+    return found === undefined ? null : structuredClone(found);
+  }
+  async putMoments(runId: RunId, moments: RunMoments): Promise<void> {
+    this.moments.set(runId, structuredClone(moments));
   }
 }

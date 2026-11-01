@@ -6,6 +6,7 @@ export * from './config.ts';
 export * from './contracts.ts';
 export * from './events.ts';
 export * from './ids.ts';
+export * from './moments.ts';
 export * from './observation.ts';
 export * from './state.ts';
 export * from './sweep.ts';

@@ -1,3 +1,4 @@
+export { describe } from './describe.ts';
 export { addGoods, apply, fold, initialState } from './fold.ts';
 export { type ContractCounts, gini, type RunMetrics, runMetrics } from './metrics.ts';
 export { newsFrom } from './news.ts';

@@ -1,7 +1,8 @@
+import { describe } from '@agent-economy/engine';
 import type { CompanyId, RunState } from '@agent-economy/schema';
 import { useEffect, useState } from 'react';
 import { fetchNotes, fetchPlans, type PlanVersion } from '../api.ts';
-import { companyRows, describe, type Log, snapshots, timeline } from '../derive.ts';
+import { companyRows, type Log, snapshots, timeline } from '../derive.ts';
 import { LineChart } from './Chart.tsx';
 import { Trace } from './Trace.tsx';
 import { Chip, fmt, standingChip } from './ui.tsx';

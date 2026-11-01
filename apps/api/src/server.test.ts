@@ -465,6 +465,56 @@ describe('agent routes', () => {
     });
   });
 
+  it('stores notable moments as given and rejects a malformed body', async () => {
+    const run = await startRun();
+    const admin = { 'x-admin-token': 'admin' };
+    const before = await api().inject({
+      method: 'GET',
+      url: `/admin/runs/${run.run_id}/moments`,
+      headers: admin,
+    });
+    expect(before.json()).toEqual({ moments: null });
+    const body = {
+      generated_at: '2026-11-01T00:00:00Z',
+      model: 'opus',
+      moments: [
+        {
+          from_turn: 1,
+          to_turn: 2,
+          text: 'c01 sold ore to c05.',
+          events: [`${run.run_id}:3`],
+          cited: 2,
+        },
+      ],
+    };
+    const put = await api().inject({
+      method: 'PUT',
+      url: `/admin/runs/${run.run_id}/moments`,
+      headers: admin,
+      payload: body,
+    });
+    expect(put.statusCode).toBe(200);
+    const after = await api().inject({
+      method: 'GET',
+      url: `/admin/runs/${run.run_id}/moments`,
+      headers: admin,
+    });
+    expect(after.json()).toEqual({ moments: body });
+    const bad = await api().inject({
+      method: 'PUT',
+      url: `/admin/runs/${run.run_id}/moments`,
+      headers: admin,
+      payload: { ...body, moments: [{ text: 'no turns' }] },
+    });
+    expect(bad.statusCode).toBe(400);
+    const missing = await api().inject({
+      method: 'GET',
+      url: '/admin/runs/r-nope/moments',
+      headers: admin,
+    });
+    expect(missing.statusCode).toBe(404);
+  });
+
   it('rolls traces up into a cost panel by company, model, and turn', async () => {
     const run = await startRun();
     const trace = (company: string, model: string, tokens_in: number) => ({
