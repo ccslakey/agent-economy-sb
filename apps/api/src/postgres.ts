@@ -1,4 +1,4 @@
-import { CompanyId, Event, Plan, RunConfig, RunId, RunMoments } from '@agent-economy/schema';
+import { CompanyId, Event, Plan, RunConfig, RunId } from '@agent-economy/schema';
 import { type Generated, type JSONColumnType, Kysely, PostgresDialect, sql } from 'kysely';
 import pg from 'pg';
 import { z } from 'zod';
@@ -37,12 +37,6 @@ type NotesTable = {
   updated_at: Generated<Date>;
 };
 
-type MomentsTable = {
-  run_id: string;
-  body: JSONColumnType<RunMoments>;
-  updated_at: Generated<Date>;
-};
-
 type TracesTable = {
   id: string;
   run_id: string;
@@ -74,7 +68,6 @@ type Database = {
   runs: RunsTable;
   events: EventsTable;
   notes: NotesTable;
-  run_moments: MomentsTable;
   agent_traces: TracesTable;
   plan_versions: PlansTable;
 };
@@ -139,12 +132,6 @@ export class PostgresStore implements Store {
         text text not null,
         updated_at timestamptz not null default now(),
         primary key (run_id, company_id)
-      )`.execute(this.db);
-    await sql`
-      create table if not exists run_moments (
-        run_id text primary key references runs(id),
-        body jsonb not null,
-        updated_at timestamptz not null default now()
       )`.execute(this.db);
     await sql`
       create table if not exists agent_traces (
@@ -357,24 +344,6 @@ export class PostgresStore implements Store {
       .onConflict((oc) =>
         oc.columns(['run_id', 'company_id']).doUpdateSet({ text, updated_at: new Date() }),
       )
-      .execute();
-  }
-
-  async getMoments(runId: RunId): Promise<RunMoments | null> {
-    const row = await this.db
-      .selectFrom('run_moments')
-      .select('body')
-      .where('run_id', '=', runId)
-      .executeTakeFirst();
-    return row === undefined ? null : RunMoments.parse(row.body);
-  }
-
-  async putMoments(runId: RunId, moments: RunMoments): Promise<void> {
-    const body = JSON.stringify(moments);
-    await this.db
-      .insertInto('run_moments')
-      .values({ run_id: runId, body })
-      .onConflict((oc) => oc.column('run_id').doUpdateSet({ body, updated_at: new Date() }))
       .execute();
   }
 }

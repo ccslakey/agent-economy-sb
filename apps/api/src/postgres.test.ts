@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { fold, rngFor, start, step } from '@agent-economy/engine';
-import { CompanyId, type Event, RunConfig, RunId, RunMoments } from '@agent-economy/schema';
+import { CompanyId, type Event, RunConfig, RunId } from '@agent-economy/schema';
 import { afterAll, describe, expect, it } from 'vitest';
 import { PostgresStore } from './postgres.ts';
 
@@ -66,18 +66,6 @@ describe.skipIf(url === undefined)('PostgresStore', () => {
     await store.putNotes(runId, CompanyId.parse('c01'), 'first');
     await store.putNotes(runId, CompanyId.parse('c01'), 'second');
     expect(await store.getNotes(runId, CompanyId.parse('c01'))).toBe('second');
-
-    expect(await store.getMoments(runId)).toBeNull();
-    const moments = {
-      generated_at: '2026-11-01T00:00:00Z',
-      model: 'opus',
-      moments: [
-        { from_turn: 1, to_turn: 1, text: 'c01 dug ore.', events: [log[1]?.id ?? ''], cited: 1 },
-      ],
-    };
-    await store.putMoments(runId, RunMoments.parse(moments));
-    await store.putMoments(runId, RunMoments.parse({ ...moments, model: 'sonnet' }));
-    expect(await store.getMoments(runId)).toEqual({ ...moments, model: 'sonnet' });
 
     const trace = {
       id: randomUUID(),

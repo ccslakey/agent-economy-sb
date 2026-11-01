@@ -128,7 +128,7 @@ export function Overview({
         <Prices log={log} turn={turn} />
       </div>
       <World log={log} state={state} turn={turn} />
-      <Moments token={token} runId={run.id} log={log} />
+      <Moments log={log} turn={turn} />
       <Cost token={token} runId={run.id} />
     </>
   );

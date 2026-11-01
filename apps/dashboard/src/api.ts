@@ -1,5 +1,5 @@
 import type { RunMetrics } from '@agent-economy/engine';
-import { Event, type Knobs, RunMoments, type RunState } from '@agent-economy/schema';
+import { Event, type Knobs, type RunState } from '@agent-economy/schema';
 
 // Admin calls. The token lives in localStorage so a reload keeps it; nothing else is stored.
 
@@ -93,11 +93,6 @@ export async function exportEvents(token: string, runId: string): Promise<void> 
 
 export const fetchMetrics = (token: string, runId: string) =>
   admin<RunMetrics>(token, `/admin/runs/${runId}/metrics`);
-
-export const fetchMoments = (token: string, runId: string) =>
-  admin<{ moments: unknown }>(token, `/admin/runs/${runId}/moments`).then((r) =>
-    r.moments === null ? null : RunMoments.parse(r.moments),
-  );
 
 /** One headless session. `result` is the CLI's JSON; its `result` string is the agent's own summary of the round. */
 export type Trace = {

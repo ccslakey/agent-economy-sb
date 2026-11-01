@@ -10,7 +10,6 @@ import {
   Plan,
   RunConfig,
   RunId,
-  RunMoments,
 } from '@agent-economy/schema';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
@@ -375,31 +374,6 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
       return { text: await options.store.getNotes(id.data, company.data) };
     },
   );
-
-  // Notable moments: written by `apps/runner/src/moments.ts`, which checks every cited event id
-  // before it PUTs. The API stores what it is given and never generates.
-  app.get<{ Params: { id: string } }>('/admin/runs/:id/moments', async (request, reply) => {
-    if (!(await admin(request, reply))) return;
-    const id = RunId.safeParse(request.params.id);
-    if (!id.success || (await options.store.getRun(id.data)) === null) {
-      return reply.code(404).send({ code: 'NOT_FOUND', reason: 'no such run' });
-    }
-    return { moments: await options.store.getMoments(id.data) };
-  });
-
-  app.put<{ Params: { id: string } }>('/admin/runs/:id/moments', async (request, reply) => {
-    if (!(await admin(request, reply))) return;
-    const id = RunId.safeParse(request.params.id);
-    if (!id.success || (await options.store.getRun(id.data)) === null) {
-      return reply.code(404).send({ code: 'NOT_FOUND', reason: 'no such run' });
-    }
-    const body = RunMoments.safeParse(request.body);
-    if (!body.success) {
-      return reply.code(400).send({ code: 'INVALID_MOMENTS', reason: body.error.message });
-    }
-    await options.store.putMoments(id.data, body.data);
-    return { ok: true };
-  });
 
   app.get<{ Params: { id: string } }>('/admin/runs/:id/tokens', async (request, reply) => {
     if (!(await admin(request, reply))) return;
