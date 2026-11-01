@@ -130,7 +130,7 @@ h3 {
   color: #c7cdd6;
 }
 .header .field select,
-.header .field input {
+.header .field input:not([type="checkbox"]):not([type="range"]) {
   font: inherit;
   font-family: var(--mono);
   font-size: 13px;

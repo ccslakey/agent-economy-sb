@@ -71,7 +71,12 @@ export function App() {
         setRuns(list);
         setError(null);
       },
-      (e: Error) => setError(e.message),
+      (e: Error) =>
+        setError(
+          e.message.startsWith('401')
+            ? 'The API rejected that admin token. Paste the ADMIN_TOKEN the API was started with.'
+            : e.message,
+        ),
     );
   }, [token]);
 
