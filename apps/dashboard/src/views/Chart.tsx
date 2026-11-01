@@ -4,7 +4,15 @@ export type Series = {
   label: string;
   /** One value per x, null where the series has no point (a good that did not clear). */
   points: (number | null)[];
+  /** Overrides the palette color. */
+  color?: string;
+  /** Drawn thin and grey behind the others, with no legend entry: context, not a subject. */
+  muted?: boolean;
 };
+
+const MUTED = '#BCC4CE';
+const colorOf = (s: Series, i: number): string =>
+  s.muted ? MUTED : (s.color ?? PALETTE[i % PALETTE.length] ?? MUTED);
 
 export const PALETTE = [
   '#1f77b4',
@@ -104,26 +112,32 @@ export function LineChart({
             strokeDasharray="3 4"
           />
         )}
-        {series.map((s, i) => (
-          <g key={s.label} stroke={PALETTE[i % PALETTE.length]} fill={PALETTE[i % PALETTE.length]}>
-            <path d={path(s.points)} fill="none" strokeWidth={1.5} />
-            {s.points.map((p, j) => {
-              const xj = x[j];
-              return p === null || xj === undefined ? null : (
-                <circle key={xj} cx={sx(xj)} cy={sy(p)} r={2}>
-                  <title>{`${s.label}, turn ${xj}: ${p}`}</title>
-                </circle>
-              );
-            })}
-          </g>
-        ))}
+        {[...series.filter((s) => s.muted), ...series.filter((s) => !s.muted)].map((s) => {
+          const color = colorOf(s, series.indexOf(s));
+          return (
+            <g key={s.label} stroke={color} fill={color}>
+              <path d={path(s.points)} fill="none" strokeWidth={s.muted ? 1.25 : 1.75} />
+              {!s.muted &&
+                s.points.map((p, j) => {
+                  const xj = x[j];
+                  return p === null || xj === undefined ? null : (
+                    <circle key={xj} cx={sx(xj)} cy={sy(p)} r={2}>
+                      <title>{`${s.label}, turn ${xj}: ${p}`}</title>
+                    </circle>
+                  );
+                })}
+            </g>
+          );
+        })}
       </svg>
       <div className="legend">
-        {series.map((s, i) => (
-          <span key={s.label} style={{ color: PALETTE[i % PALETTE.length] }}>
-            ■ {s.label}
-          </span>
-        ))}
+        {series.map((s, i) =>
+          s.muted ? null : (
+            <span key={s.label} style={{ color: colorOf(s, i) }}>
+              ■ {s.label}
+            </span>
+          ),
+        )}
       </div>
     </figure>
   );

@@ -4,6 +4,26 @@ import { type Log, worldRows } from '../derive.ts';
 import { LineChart } from './Chart.tsx';
 import { fmt } from './ui.tsx';
 
+export function Prices({ log, turn }: { log: Log; turn: number }) {
+  const rows = useMemo(() => worldRows(log), [log]);
+  return (
+    <section className="card side">
+      <h2>NPC clearing prices</h2>
+      <LineChart
+        title=""
+        x={rows.map((r) => r.turn)}
+        marker={turn}
+        width={380}
+        height={220}
+        series={FINAL_GOODS.map((good) => ({
+          label: good,
+          points: rows.map((r) => r.prices[good] ?? null),
+        }))}
+      />
+    </section>
+  );
+}
+
 export function World({ log, state, turn }: { log: Log; state: RunState; turn: number }) {
   const rows = useMemo(() => worldRows(log), [log]);
   const x = rows.map((r) => r.turn);
@@ -22,15 +42,6 @@ export function World({ log, state, turn }: { log: Log; state: RunState; turn: n
               { label: 'total cash', points: rows.map((r) => r.money) },
               { label: 'solvent ×100', points: rows.map((r) => r.solvent * 100) },
             ]}
-          />
-          <LineChart
-            title="NPC clearing prices"
-            x={x}
-            marker={turn}
-            series={FINAL_GOODS.map((good) => ({
-              label: good,
-              points: rows.map((r) => r.prices[good] ?? null),
-            }))}
           />
           <LineChart
             title="Output per turn"

@@ -11,11 +11,9 @@ import {
 import { byTurn, type Log, lastTurn, splitLog, stateAt } from './derive.ts';
 import { Company } from './views/Company.tsx';
 import { Contracts } from './views/Contracts.tsx';
-import { Cost } from './views/Cost.tsx';
-import { Leaderboard } from './views/Leaderboard.tsx';
 import { Messages } from './views/Messages.tsx';
+import { Overview } from './views/Overview.tsx';
 import { Runs } from './views/Runs.tsx';
-import { World } from './views/World.tsx';
 
 const PAGES = [
   { id: 'overview', label: 'Overview' },
@@ -198,12 +196,8 @@ export function App() {
         )}
         {runs !== null && runId !== null && log === null && <p className="muted">Loading run…</p>}
         {runs !== null && shown === 'compare' && <Runs runs={runs} onSelect={openRun} />}
-        {ready && shown === 'overview' && (
-          <>
-            <Leaderboard log={log} turn={turn} />
-            <World log={log} state={state} turn={turn} />
-            <Cost token={token} runId={runId} />
-          </>
+        {ready && run !== undefined && shown === 'overview' && (
+          <Overview log={log} state={state} turn={turn} run={run} token={token} />
         )}
         {ready && shown === 'network' && <Contracts log={log} state={state} turn={turn} />}
         {ready && shown === 'companies' && (

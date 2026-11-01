@@ -1,4 +1,11 @@
-import { apply, initialState, reputationOf, scoreOf } from '@agent-economy/engine';
+import {
+  apply,
+  initialState,
+  type RunMetrics,
+  reputationOf,
+  runMetrics,
+  scoreOf,
+} from '@agent-economy/engine';
 import type {
   Company,
   CompanyId,
@@ -180,6 +187,40 @@ export function leaderSince(
   let since = index;
   while (since > 0 && leaderAt(since - 1) === leader) since -= 1;
   return turns[since] ?? null;
+}
+
+/** The spec's run metrics folded through the end of `turn`. */
+export function metricsAt(log: Log, turn: number): RunMetrics {
+  return runMetrics(
+    log.started,
+    log.rest.filter((e) => e.turn <= turn),
+  );
+}
+
+export type DriverRate = {
+  driver: string;
+  companies: number;
+  /** Completed plus defaulted contracts, counted once per party. */
+  closed: number;
+  defaulted: number;
+  rate: number | null;
+};
+
+/** Defaults over closures per driver (a model, or a bot strategy) as of `turn`, worst first. */
+export function defaultRateByDriver(state: RunState, turn: number): DriverRate[] {
+  const tallies = new Map<string, DriverRate>();
+  for (const c of Object.values(state.companies)) {
+    const driver = driverLabel(state, c.id);
+    const rep = reputationOf(state, c, turn);
+    const t = tallies.get(driver) ?? { driver, companies: 0, closed: 0, defaulted: 0, rate: null };
+    t.companies += 1;
+    t.closed += rep.completed + rep.defaulted;
+    t.defaulted += rep.defaulted;
+    tallies.set(driver, t);
+  }
+  return [...tallies.values()]
+    .map((t) => ({ ...t, rate: t.closed === 0 ? null : t.defaulted / t.closed }))
+    .sort((a, b) => (b.rate ?? -1) - (a.rate ?? -1));
 }
 
 /** The model for an LLM company, the strategy for a bot. */

@@ -66,6 +66,22 @@ h3 {
   }
 }
 
+.field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.field select,
+.field input:not([type="checkbox"]):not([type="range"]) {
+  font: inherit;
+  font-size: 13px;
+  min-height: 36px;
+  border: 1px solid #c9d0d9;
+  border-radius: 6px;
+  padding: 0 8px;
+  background: #fff;
+}
 /* Header and run bar */
 
 .header {
@@ -340,22 +356,6 @@ table.data tr.selected {
   border-color: var(--header);
   color: #fff;
 }
-.field {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-}
-.field select,
-.field input:not([type="checkbox"]):not([type="range"]) {
-  font: inherit;
-  font-size: 13px;
-  min-height: 36px;
-  border: 1px solid #c9d0d9;
-  border-radius: 6px;
-  padding: 0 8px;
-  background: #fff;
-}
 .toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -437,4 +437,27 @@ fieldset.pills {
   border: none;
   margin: 0;
   padding: 0;
+}
+
+/* Horizontal bars */
+
+.bar-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bar-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+.bar {
+  height: 10px;
+  background: var(--hair);
+  border-radius: 5px;
+}
+.bar-fill {
+  height: 10px;
+  border-radius: 5px;
 }
