@@ -10,6 +10,7 @@
     "agent-economy-mcp": "./src/mcp.ts"
   },
   "dependencies": {
+    "@agent-economy/engine": "workspace:*",
     "@agent-economy/schema": "workspace:*",
     "@modelcontextprotocol/sdk": "1.32.2",
     "zod": "4.6.7"
