@@ -7,7 +7,6 @@ const STATUSES = [
   'active',
   'completed',
   'defaulted',
-  'cured',
   'rejected',
   'withdrawn',
   'expired',
@@ -45,20 +44,13 @@ export function Contracts({ state }: { state: RunState }) {
       <table style={{ borderCollapse: 'collapse', fontSize: 13 }}>
         <thead>
           <tr>
-            {[
-              'id',
-              'proposer',
-              'counterparty',
-              'escrow',
-              'obligations',
-              'status',
-              'turn',
-              'terms',
-            ].map((h) => (
-              <th key={h} style={cell}>
-                {h}
-              </th>
-            ))}
+            {['id', 'proposer', 'counterparty', 'obligations', 'status', 'turn', 'terms'].map(
+              (h) => (
+                <th key={h} style={cell}>
+                  {h}
+                </th>
+              ),
+            )}
           </tr>
         </thead>
         <tbody>
@@ -67,13 +59,11 @@ export function Contracts({ state }: { state: RunState }) {
               <td style={cell}>{k.id}</td>
               <td style={cell}>{k.proposer}</td>
               <td style={cell}>{k.counterparty}</td>
-              <td style={cell}>{k.escrow ? 'yes' : ''}</td>
               <td style={cell}>{k.obligations.map(obligation).join('; ')}</td>
               <td style={cell}>
                 {k.status.status}
                 {k.status.status === 'defaulted' &&
                   ` by ${k.status.by.join(', ')} (${k.status.unmet_value})`}
-                {k.status.status === 'cured' && ` (${k.status.cured_value})`}
               </td>
               <td style={cell}>{statusTurn(k)}</td>
               <td style={cell}>{k.terms_text}</td>

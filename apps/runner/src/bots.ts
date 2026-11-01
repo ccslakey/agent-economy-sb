@@ -156,7 +156,6 @@ function proposeInputs(view: BotView, memory: BotMemory): Action[] {
         actions.push({
           type: 'propose_contract',
           counterparty: supplier.id,
-          escrow: false,
           terms_text: `${qty} ${input} this turn for ${qty * view.prices[input]} cash next turn`,
           obligations: [
             { kind: 'goods', by: 'counterparty', good: input, qty, due_turn: turn },
@@ -227,26 +226,19 @@ function answerProposals(view: BotView, memory: BotMemory): Action[] {
   return actions;
 }
 
-/**
- * Deliver everything we owe that we can cover, and pay only on contracts where the other side has
- * delivered in full. Goods go first, cash follows, so a defector gets paid for nothing at most never.
- */
+/** Deposit everything we owe that we can cover. Deposits are held and refunded if the other side fails. */
 function fulfil(view: BotView): Action[] {
   const me = view.observation.you.id;
   const actions: Action[] = [];
   let cash = view.observation.you.cash;
   const inventory = { ...view.observation.you.inventory };
   const open = view.contracts
-    .filter((k) => k.status.status === 'active' || k.status.status === 'defaulted')
+    .filter((k) => k.status.status === 'active')
     .sort((a, b) => (a.id < b.id ? -1 : 1));
   for (const k of open) {
     const side = sideOf(k, me);
-    const theirsMet = k.obligations.every(
-      (o) => o.by === side || (o.kind === 'goods' ? o.met >= o.qty : o.met >= o.amount),
-    );
     k.obligations.forEach((o, index) => {
       if (o.by !== side) return;
-      if (o.kind === 'cash' && !theirsMet) return;
       if (o.kind === 'goods') {
         const remaining = o.qty - o.met;
         const held = inventory[o.good] ?? 0;
@@ -337,7 +329,6 @@ const randomBot: Bot = (view, _memory, rng) => {
     actions.push({
       type: 'propose_contract',
       counterparty: other.id,
-      escrow: false,
       terms_text: 'random offer',
       obligations: [
         { kind: 'goods', by: 'counterparty', good, qty, due_turn: view.observation.turn },
