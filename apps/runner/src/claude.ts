@@ -11,8 +11,10 @@ export type SessionRequest = {
   model: string;
   effort: string;
   mcpConfigPath: string;
-  /** A session id to continue, for the per_turn context knob. */
+  /** A session id to continue, for the per_turn and persistent context knobs. */
   resume?: string;
+  /** Pin a new session's id, so a persistent session that dies can be resumed by it. */
+  sessionId?: string;
   cwd: string;
 };
 
@@ -84,6 +86,7 @@ export function cliArgs(request: SessionRequest): string[] {
     '--output-format',
     'json',
     ...(request.resume === undefined ? [] : ['--resume', request.resume]),
+    ...(request.sessionId === undefined ? [] : ['--session-id', request.sessionId]),
   ];
 }
 
@@ -139,6 +142,8 @@ export const claudeSpawner: Spawner = (request) =>
     const child = spawn('claude', cliArgs(request), {
       cwd: request.cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
+      // A persistent session blocks in wait_for_round for as long as the other companies take.
+      env: { ...process.env, MCP_TOOL_TIMEOUT: process.env.MCP_TOOL_TIMEOUT ?? '3600000' },
     });
     let stdout = '';
     let stderr = '';

@@ -1,6 +1,6 @@
 # API
 
-All requests carry `Authorization: Bearer <your token>`. Every request spends one tool call from your round budget.
+All requests carry `Authorization: Bearer <your token>`. Every request but `/v1/wait` spends one tool call from your round budget.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -14,6 +14,7 @@ All requests carry `Authorization: Bearer <your token>`. Every request spends on
 | GET, PUT | `/v1/notes` | Your private notes, `{ "text": "..." }`, capped in length. Your only memory between rounds |
 | GET, PUT | `/v1/plan` | Your standing game plan: `{ "early", "mid", "late", "now", "thoughts" }`, each a short string. Every revision is kept |
 | POST | `/v1/bug_report` | `{ "text": "..." }` about anything confusing or broken |
+| GET | `/v1/wait?turn=N&round=R` | For a session that plays the whole game: returns when a round other than the one given is open, with your observation, or `{ "status": "ended" }` with final scores. Polls for up to 20 seconds and returns `{ "status": "waiting" }` to call again. Spends no tool call |
 
 ## Actions
 

@@ -98,13 +98,52 @@ async function fakeAgent(request: SessionRequest): Promise<SessionResult> {
   };
 }
 
+/** A session that plays the whole game: act, wait for the next round, repeat, then answer. */
+async function fakeAwakeAgent(request: SessionRequest): Promise<SessionResult> {
+  const mcp = JSON.parse(await readFile(request.mcpConfigPath, 'utf8')) as {
+    mcpServers: { game: { env: { AGENT_ECONOMY_URL: string; AGENT_ECONOMY_TOKEN: string } } };
+  };
+  const env = mcp.mcpServers.game.env;
+  const client = new GameClient({ baseUrl: env.AGENT_ECONOMY_URL, token: env.AGENT_ECONOMY_TOKEN });
+  type Seen = { turn: number; round: number; you: { roles: string[] } };
+  let seen = JSON.parse(await client.call('GET', '/v1/observation')) as Seen;
+  let rounds = 0;
+  for (;;) {
+    const action =
+      seen.you.roles[0] === 'miner'
+        ? { type: 'extract', from: { kind: 'ore_pit' }, qty: 12 }
+        : { type: 'produce', good: 'ingot', qty: 6 };
+    await client.call('POST', '/v1/actions', { actions: [action] });
+    rounds += 1;
+    let waited: { status: string; observation?: Seen };
+    do {
+      waited = JSON.parse(
+        await client.call('GET', `/v1/wait?turn=${seen.turn}&round=${seen.round}&timeout_ms=200`),
+      ) as typeof waited;
+    } while (waited.status === 'waiting');
+    if (waited.status === 'ended') {
+      return {
+        ok: true,
+        sessionId: request.sessionId ?? 'awake',
+        result: `played ${rounds} rounds awake`,
+        raw: { prompt: request.prompt, sessionId: request.sessionId ?? null },
+        tokensIn: 500,
+        tokensOut: 80,
+        costUsd: 0.1,
+        durationMs: 40,
+      };
+    }
+    seen = waited.observation as Seen;
+  }
+}
+
 let app: Awaited<ReturnType<typeof buildServer>> | null = null;
 afterEach(async () => {
   await app?.close();
   app = null;
 });
 
-async function start(spawner: Spawner, quotaWaitMs = 1) {
+async function start(spawner: Spawner, quotaWaitMs = 1, runConfig: object = config) {
   const store = new MemoryStore();
   app = await buildServer({
     store,
@@ -116,7 +155,7 @@ async function start(spawner: Spawner, quotaWaitMs = 1) {
     method: 'POST',
     url: '/admin/runs',
     headers: { 'x-admin-token': 'admin' },
-    payload: config,
+    payload: runConfig,
   });
   const { run_id } = created.json() as { run_id: string };
   const lines: string[] = [];
@@ -165,6 +204,30 @@ describe('drive', () => {
     expect(bot.length).toBeGreaterThan(0);
   });
 
+  it('plays a persistent run with one session per company that waits between rounds', async () => {
+    const awake = {
+      ...config,
+      knobs: { ...config.knobs, context_persistence: 'persistent' },
+      limits: { ...config.limits, auto_advance: true },
+    };
+    const { result, events, traces } = await start(fakeAwakeAgent, 1, awake);
+    expect(result.turns).toBe(2);
+    expect(result.replaced).toEqual([]);
+    expect(events.some((e) => e.type === 'run_ended')).toBe(true);
+    expect(
+      events.filter((e) => e.type === 'extraction_completed' && e.actor === 'c01'),
+    ).toHaveLength(2);
+    expect(events.some((e) => e.type === 'production_completed' && e.actor === 'c09')).toBe(true);
+    const rounds = traces.filter((t) => t.kind === 'round');
+    expect(rounds).toHaveLength(2);
+    expect(
+      rounds.every((t) => typeof (t.result as { sessionId: unknown }).sessionId === 'string'),
+    ).toBe(true);
+    const farming = traces.filter((t) => t.kind === 'farming');
+    expect(farming.map((t) => t.company).sort()).toEqual(['c01', 'c05']);
+    const first = farming[0]?.result as { prompt: string } | undefined;
+    expect(first?.prompt).toContain('plays the whole game');
+  });
   it('pauses the run on a quota error and resumes before retrying', async () => {
     let calls = 0;
     const flaky: Spawner = async (request) => {
