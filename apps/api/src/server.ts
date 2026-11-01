@@ -267,12 +267,19 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
 
   const SinceQuery = z.object({ after: z.coerce.number().int().optional() });
 
+  // Ended runs have no live game, so their events and notes come straight from the store.
   app.get<{ Params: { id: string } }>('/admin/runs/:id/events', async (request, reply) => {
     if (!(await admin(request, reply))) return;
     const { after } = SinceQuery.parse(request.query);
-    const game = gameOrFail(request.params.id, reply);
-    if (game === null) return;
-    return { events: game.log.filter((e) => after === undefined || e.seq > after) };
+    const game = games.get(request.params.id);
+    if (game !== undefined) {
+      return { events: game.log.filter((e) => after === undefined || e.seq > after) };
+    }
+    const id = RunId.safeParse(request.params.id);
+    if (!id.success || (await options.store.getRun(id.data)) === null) {
+      return reply.code(404).send({ code: 'NOT_FOUND', reason: `no run ${request.params.id}` });
+    }
+    return { events: await options.store.events(id.data, after ?? -1) };
   });
 
   app.post<{ Params: { id: string } }>('/admin/runs/:id/advance', async (request, reply) => {
@@ -303,6 +310,19 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
     await options.store.setRunStatus(game.id, 'running');
     return { phase: game.state.phase };
   });
+
+  app.get<{ Params: { id: string; company: string } }>(
+    '/admin/runs/:id/notes/:company',
+    async (request, reply) => {
+      if (!(await admin(request, reply))) return;
+      const id = RunId.safeParse(request.params.id);
+      const company = CompanyId.safeParse(request.params.company);
+      if (!id.success || !company.success || (await options.store.getRun(id.data)) === null) {
+        return reply.code(404).send({ code: 'NOT_FOUND', reason: 'no such run or company' });
+      }
+      return { text: await options.store.getNotes(id.data, company.data) };
+    },
+  );
 
   app.addHook('onClose', async () => {
     for (const game of games.values()) game.close();

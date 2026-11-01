@@ -16,5 +16,10 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["packages/*/src/**/*.ts", "apps/*/src/**/*.ts", "vitest.config.ts"]
+  "include": [
+    "packages/*/src/**/*.ts",
+    "apps/api/src/**/*.ts",
+    "apps/runner/src/**/*.ts",
+    "vitest.config.ts"
+  ]
 }

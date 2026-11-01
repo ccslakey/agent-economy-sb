@@ -7,11 +7,12 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "check": "pnpm lint && pnpm typecheck && pnpm test",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "lint": "biome ci .",
     "format": "biome format --write .",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run"
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/dashboard/tsconfig.json",
+    "test": "vitest run",
+    "build": "pnpm --filter @agent-economy/dashboard build"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.4",
