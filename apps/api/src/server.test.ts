@@ -62,13 +62,17 @@ afterEach(async () => {
   app = null;
 });
 
-async function startRun(store = new MemoryStore(), clock = frozenClock()) {
+async function startRun(
+  store = new MemoryStore(),
+  clock = frozenClock(),
+  payload: object = config,
+) {
   app = await buildServer({ store, adminToken: 'admin', docsDir, clock });
   const created = await app.inject({
     method: 'POST',
     url: '/admin/runs',
     headers: { 'x-admin-token': 'admin' },
-    payload: config,
+    payload,
   });
   expect(created.statusCode).toBe(201);
   const { run_id, tokens } = created.json() as { run_id: string; tokens: Record<string, string> };
@@ -465,8 +469,19 @@ describe('agent routes', () => {
     });
   });
 
-  it('long-polls the next round without spending budget', async () => {
-    const run = await startRun();
+  it('long-polls the next round without spending budget, in a persistent run only', async () => {
+    const fresh = await startRun();
+    const refused = await api().inject({
+      method: 'GET',
+      url: '/v1/wait?turn=1&round=1&timeout_ms=0',
+      headers: fresh.as('c01'),
+    });
+    expect(refused.statusCode).toBe(409);
+    await api().close();
+    const run = await startRun(new MemoryStore(), frozenClock(), {
+      ...config,
+      knobs: { ...config.knobs, context_persistence: 'persistent' },
+    });
     const waiting = await api().inject({
       method: 'GET',
       url: '/v1/wait?turn=1&round=1&timeout_ms=10',

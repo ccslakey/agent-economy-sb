@@ -33,7 +33,12 @@ export class GameClient {
 
 const Text = z.string().min(1).max(500);
 
-export function buildMcpServer(client: GameClient): McpServer {
+export type McpOptions = {
+  /** Expose wait_for_round. Only a persistent session may block on it: in a per-round session it would hold the round open until the wall clock. */
+  wait?: boolean;
+};
+
+export function buildMcpServer(client: GameClient, options: McpOptions = {}): McpServer {
   const server = new McpServer({ name: 'agent-economy', version: '0.1.0' });
   const asText = (promise: Promise<string>) =>
     promise.then((text) => ({ content: [{ type: 'text' as const, text }] }));
@@ -159,22 +164,23 @@ export function buildMcpServer(client: GameClient): McpServer {
     ({ text }) => asText(client.call('PUT', '/v1/notes', { text })),
   );
 
-  server.registerTool(
-    'wait_for_round',
-    {
-      description:
-        'Wait until the next round opens, then return your fresh observation. Pass the turn and round you just acted in, from your observation. Returns status "ended" with the final scores when the game is over. Spends no tool call. For a session that plays the whole game.',
-      inputSchema: { turn: z.number().int(), round: z.number().int() },
-    },
-    async ({ turn, round }) => {
-      for (;;) {
-        const text = await client.call('GET', `/v1/wait?turn=${turn}&round=${round}`);
-        if (text.startsWith('HTTP ')) return { content: [{ type: 'text' as const, text }] };
-        const { status } = JSON.parse(text) as { status: string };
-        if (status !== 'waiting') return { content: [{ type: 'text' as const, text }] };
-      }
-    },
-  );
+  if (options.wait === true)
+    server.registerTool(
+      'wait_for_round',
+      {
+        description:
+          'Wait until the next round opens, then return your fresh observation. Pass the turn and round you just acted in, from your observation. Returns status "ended" with the final scores when the game is over. Spends no tool call. For a session that plays the whole game.',
+        inputSchema: { turn: z.number().int(), round: z.number().int() },
+      },
+      async ({ turn, round }) => {
+        for (;;) {
+          const text = await client.call('GET', `/v1/wait?turn=${turn}&round=${round}`);
+          if (text.startsWith('HTTP ')) return { content: [{ type: 'text' as const, text }] };
+          const { status } = JSON.parse(text) as { status: string };
+          if (status !== 'waiting') return { content: [{ type: 'text' as const, text }] };
+        }
+      },
+    );
 
   server.registerTool(
     'bug_report',
@@ -196,6 +202,8 @@ if (isMain) {
   if (baseUrl === undefined || token === undefined) {
     throw new Error('set AGENT_ECONOMY_URL and AGENT_ECONOMY_TOKEN');
   }
-  const server = buildMcpServer(new GameClient({ baseUrl, token }));
+  const server = buildMcpServer(new GameClient({ baseUrl, token }), {
+    wait: process.env.AGENT_ECONOMY_PERSISTENT === '1',
+  });
   await server.connect(new StdioServerTransport());
 }
