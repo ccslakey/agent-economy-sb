@@ -402,6 +402,32 @@ describe('world', () => {
     );
     expect(types(g.closeTurn())).not.toContain('upkeep_charged');
   });
+  it('pays turn income after upkeep when the economy sets it, and never otherwise', () => {
+    const closed = game();
+    expect(types(closed.closeTurn())).not.toContain('income_paid');
+    const g = game({ turn_income: 20 });
+    const events = g.closeTurn();
+    const paid = events.filter((e) => e.type === 'income_paid');
+    expect(paid).toHaveLength(5);
+    expect(types(events).indexOf('income_paid')).toBeGreaterThan(
+      types(events).indexOf('upkeep_charged'),
+    );
+    expect(company(g, 'c01').cash).toBe(600 - 40 + 20);
+    expect(company(g, 'c01').charges).toEqual({
+      turn: 1,
+      upkeep: 40,
+      storage: 0,
+      storage_units: 0,
+      income: 20,
+    });
+    const seen = observe(g.state(), company(g, 'c01'), { contracts_changed: [], messages: [] }, 8);
+    expect(seen.you.last_turn_charges).toEqual({
+      upkeep: 40,
+      storage: 0,
+      storage_units: 0,
+      income: 20,
+    });
+  });
   it('ends a fixed game on its last turn with scores and opens no new turn', () => {
     const g = game({}, { horizon: { kind: 'fixed', last_turn: 2 } });
     expect(types(g.closeTurn())).not.toContain('run_ended');
@@ -1001,8 +1027,18 @@ describe('observation', () => {
     expect(seller.reference_prices.tool).toBe(160);
     expect(seller.you.net_worth).toBe(seller.you.cash);
     expect(next.you.recipes).toEqual({ ore: {} });
-    expect(next.you.last_turn_charges).toEqual({ upkeep: 40, storage: 12, storage_units: 12 });
-    expect(seller.you.last_turn_charges).toEqual({ upkeep: 40, storage: 0, storage_units: 0 });
+    expect(next.you.last_turn_charges).toEqual({
+      upkeep: 40,
+      storage: 12,
+      storage_units: 12,
+      income: 0,
+    });
+    expect(seller.you.last_turn_charges).toEqual({
+      upkeep: 40,
+      storage: 0,
+      storage_units: 0,
+      income: 0,
+    });
     const board = observe(
       game({}, { needs_board: 'on', horizon: { kind: 'fixed', last_turn: 9 } }).state(),
       company(g, 'c05'),

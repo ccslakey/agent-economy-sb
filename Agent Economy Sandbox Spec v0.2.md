@@ -97,6 +97,7 @@ The intercept a\_t moves each turn by a small random factor (default ±5%) and b
 | License reserve     | 750                                                            | Minimum bid for a bankrupt company's license, half the extra-license price             |
 | Default penalty     | 75% of the failing side's value                                | Halved when enforcement is off. Destroyed, not paid to the other party                 |
 | Rebrand fee         | 300                                                            | Only when rebranding is enabled                                                        |
+| Turn income         | 0                                                              | Paid to every solvent company after upkeep. A sweep variant sets 20, so the economy is no longer closed and weak companies can refill |
 | Shock chance        | 5% per turn                                                    | One shock drawn from the table below                                                   |
 
 | Shock          | Effect                       | Duration |

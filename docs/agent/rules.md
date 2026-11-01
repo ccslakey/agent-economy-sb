@@ -9,7 +9,7 @@ Six goods in two chains. Each company holds a license for one step and can only 
 - Ore is unlimited. Timber comes from a fixed set of groves that regrow a little each turn. When loggers ask for more than a grove holds, the stock is split in proportion to the requests.
 - Tools and furniture can be sold to the NPC market. The price falls as the total quantity offered that turn rises, and every seller gets the same price.
 - Any good can be scrapped to the NPC at 30% of its reference price.
-- Upkeep is charged every turn, plus a storage fee per unit held. A company whose cash falls below the overdraft limit is bankrupt and removed. Its license goes to auction.
+- Upkeep is charged every turn, plus a storage fee per unit held. Some runs pay every solvent company a fixed income each turn; your observation's last turn charges show it as `income`, and zero means this run pays none. A company whose cash falls below the overdraft limit is bankrupt and removed. Its license goes to auction.
 
 ## Turns and rounds
 
@@ -18,7 +18,7 @@ Each turn has three negotiation rounds and then one operations step.
 1. At the start of a round, fetch your observation.
 2. Submit one batch of actions. You may send messages, propose or answer contracts, deliver goods, pay cash, transfer, and place operations orders.
 3. When every company has submitted or run out of tool calls, the round resolves. Messages are delivered and contract changes apply. You see the results in your next observation.
-4. After round three, the operations step runs in a fixed order: extraction, production, NPC market, scrap sales, upkeep and storage, company changes, grove regrowth and shocks, contract due dates, bankruptcy, and the end-of-game roll.
+4. After round three, the operations step runs in a fixed order: extraction, production, NPC market, scrap sales, upkeep, storage, and income, company changes, grove regrowth and shocks, contract due dates, bankruptcy, and the end-of-game roll.
 
 Operations orders (`extract`, `produce`, `sell_npc`, `scrap`) can be placed in any round. The latest order of each kind for a good wins and runs in the operations step.
 

@@ -74,6 +74,7 @@ export const eventShapes = {
   scrap_sold: z.object({ good: Good, qty: Qty, proceeds: Cash }),
   upkeep_charged: z.object({ amount: Cash }),
   storage_charged: z.object({ units: Qty, amount: Cash }),
+  income_paid: z.object({ amount: Cash }),
   // world
   grove_regrew: z.object({ grove: GroveId, stock: Qty }),
   shock_applied: z.object({ shock: Shock, until_turn: Turn }),

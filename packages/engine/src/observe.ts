@@ -92,8 +92,9 @@ export function observe(
               upkeep: company.charges.upkeep,
               storage: company.charges.storage,
               storage_units: company.charges.storage_units,
+              income: company.charges.income,
             }
-          : { upkeep: 0, storage: 0, storage_units: 0 },
+          : { upkeep: 0, storage: 0, storage_units: 0, income: 0 },
     },
     scrap_per_unit: scrapPerUnit(state),
     needs: knobs.needs_board === 'on' ? needsBoard(state, solvent) : null,

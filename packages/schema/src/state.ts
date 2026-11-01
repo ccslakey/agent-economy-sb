@@ -58,7 +58,13 @@ export const Company = z.object({
   pending_orders: PendingOrders,
   standing: Standing,
   /** The upkeep and storage charged in the most recent operations step, stamped with its turn. */
-  charges: z.object({ turn: Turn, upkeep: Cash, storage: Cash, storage_units: Qty }),
+  charges: z.object({
+    turn: Turn,
+    upkeep: Cash,
+    storage: Cash,
+    storage_units: Qty,
+    income: Cash,
+  }),
 });
 export type Company = z.infer<typeof Company>;
 

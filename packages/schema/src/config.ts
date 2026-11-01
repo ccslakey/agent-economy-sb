@@ -21,6 +21,8 @@ export const Economy = z.object({
     furniture_maker: { plank: 6, tool: 2 },
   }),
   upkeep: Cash.default(40),
+  /** Paid to every solvent company in the operations step, after upkeep. Zero keeps the economy closed. */
+  turn_income: Cash.nonnegative().default(0),
   storage_cost_per_unit: Cash.default(1),
   demand: z
     .record(FinalGood, DemandCurve)
