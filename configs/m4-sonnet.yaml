@@ -4,12 +4,48 @@
 seed: 101
 experiment_id: m4-sonnet
 population:
-  - { id: c01, name: Ironreach, role: miner, driver: { kind: llm, model: sonnet, effort: low, harness_version: 1, prompt_variant: neutral } }
-  - { id: c03, name: Fellwood, role: logger, driver: { kind: llm, model: sonnet, effort: low, harness_version: 1, prompt_variant: neutral } }
-  - { id: c05, name: Emberworks, role: smelter, driver: { kind: llm, model: sonnet, effort: low, harness_version: 1, prompt_variant: neutral } }
-  - { id: c07, name: Birchline Mills, role: mill, driver: { kind: llm, model: sonnet, effort: low, harness_version: 1, prompt_variant: neutral } }
-  - { id: c09, name: Anvilgate, role: toolmaker, driver: { kind: llm, model: sonnet, effort: low, harness_version: 1, prompt_variant: neutral } }
-  - { id: c11, name: Hearthstead, role: furniture_maker, driver: { kind: llm, model: sonnet, effort: low, harness_version: 1, prompt_variant: neutral } }
+  - {
+      id: c01,
+      name: Ironreach,
+      role: miner,
+      driver:
+        { kind: llm, model: sonnet, effort: low, harness_version: 1, prompt_variant: neutral },
+    }
+  - {
+      id: c03,
+      name: Fellwood,
+      role: logger,
+      driver:
+        { kind: llm, model: sonnet, effort: low, harness_version: 1, prompt_variant: neutral },
+    }
+  - {
+      id: c05,
+      name: Emberworks,
+      role: smelter,
+      driver:
+        { kind: llm, model: sonnet, effort: low, harness_version: 1, prompt_variant: neutral },
+    }
+  - {
+      id: c07,
+      name: Birchline Mills,
+      role: mill,
+      driver:
+        { kind: llm, model: sonnet, effort: low, harness_version: 1, prompt_variant: neutral },
+    }
+  - {
+      id: c09,
+      name: Anvilgate,
+      role: toolmaker,
+      driver:
+        { kind: llm, model: sonnet, effort: low, harness_version: 1, prompt_variant: neutral },
+    }
+  - {
+      id: c11,
+      name: Hearthstead,
+      role: furniture_maker,
+      driver:
+        { kind: llm, model: sonnet, effort: low, harness_version: 1, prompt_variant: neutral },
+    }
 knobs:
   horizon: { kind: fixed, last_turn: 15 }
 limits:
