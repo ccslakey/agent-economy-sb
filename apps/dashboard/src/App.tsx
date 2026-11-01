@@ -10,11 +10,11 @@ import {
 } from './api.ts';
 import { byTurn, type EdgeFilter, type Log, lastTurn, splitLog, stateAt } from './derive.ts';
 import { Company } from './views/Company.tsx';
+import { Compare } from './views/Compare.tsx';
 import { Contracts } from './views/Contracts.tsx';
 import { Messages } from './views/Messages.tsx';
 import { Network, NetworkFilters, SelectedCompany } from './views/Network.tsx';
 import { Overview } from './views/Overview.tsx';
-import { Runs } from './views/Runs.tsx';
 
 const PAGES = [
   { id: 'overview', label: 'Overview' },
@@ -203,7 +203,9 @@ export function App() {
           <p className="muted">Enter the admin token to load runs.</p>
         )}
         {runs !== null && runId !== null && log === null && <p className="muted">Loading run…</p>}
-        {runs !== null && shown === 'compare' && <Runs runs={runs} onSelect={openRun} />}
+        {runs !== null && shown === 'compare' && (
+          <Compare runs={runs} token={token} onSelect={openRun} />
+        )}
         {ready && run !== undefined && shown === 'overview' && (
           <Overview log={log} state={state} turn={turn} run={run} token={token} />
         )}

@@ -27,8 +27,8 @@ export function Runs({ runs, onSelect }: { runs: RunListing[]; onSelect: (id: st
   return (
     <section className="card">
       <div className="card-head">
-        <h2>Runs</h2>
-        <div className="muted">{runs.length} runs · click one to open it</div>
+        <h2>Run settings</h2>
+        <div className="muted">Every run with its knobs and population · click one to open it</div>
       </div>
       <div className="scroll">
         <table className="data">

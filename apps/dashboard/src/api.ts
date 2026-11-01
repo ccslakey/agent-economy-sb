@@ -1,3 +1,4 @@
+import type { RunMetrics } from '@agent-economy/engine';
 import { Event, type Knobs, type RunState } from '@agent-economy/schema';
 
 // Admin calls. The token lives in localStorage so a reload keeps it; nothing else is stored.
@@ -89,3 +90,6 @@ export async function exportEvents(token: string, runId: string): Promise<void> 
   a.click();
   URL.revokeObjectURL(url);
 }
+
+export const fetchMetrics = (token: string, runId: string) =>
+  admin<RunMetrics>(token, `/admin/runs/${runId}/metrics`);

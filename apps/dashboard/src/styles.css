@@ -483,3 +483,18 @@ fieldset.pills {
   border-top: 1px solid var(--hair);
   font-size: 13px;
 }
+
+/* Heatmap */
+
+.heat {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+.heat-cell {
+  border-radius: 8px;
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
