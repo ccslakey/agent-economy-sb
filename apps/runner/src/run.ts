@@ -4,7 +4,8 @@ import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { parse as parseYaml } from 'yaml';
 import { claudeSpawner } from './claude.ts';
-import { createRun, drive } from './drive.ts';
+import { createRun, drive, recordProvenance } from './drive.ts';
+import { collectProvenance } from './provenance.ts';
 import { formatReport } from './report.ts';
 
 // Drive a run to the end through headless Claude Code.
@@ -22,20 +23,29 @@ const api = args.get('api') ?? 'http://localhost:3000';
 const adminToken = process.env.ADMIN_TOKEN;
 if (adminToken === undefined) throw new Error('set ADMIN_TOKEN');
 
+const variant = args.get('prompt') ?? 'neutral';
+const promptPath = path.resolve(import.meta.dirname, `../../../docs/prompts/${variant}.md`);
+const systemPrompt = await readFile(promptPath, 'utf8');
+
 let runId = args.get('run');
 if (runId === undefined) {
   const configPath = args.get('config');
   if (configPath === undefined) throw new Error('pass --run <id> or --config <file>');
   const loaded = parseYaml(await readFile(configPath, 'utf8')) as Record<string, unknown>;
   runId = await createRun(api, adminToken, loaded);
+  await recordProvenance(
+    api,
+    adminToken,
+    runId,
+    await collectProvenance({
+      repoDir: path.resolve(import.meta.dirname, '../../..'),
+      promptVariant: variant,
+      promptPath,
+      docsDir: path.resolve(import.meta.dirname, '../../../docs/agent'),
+    }),
+  );
   process.stdout.write(`created run ${runId}\n`);
 }
-
-const variant = args.get('prompt') ?? 'neutral';
-const systemPrompt = await readFile(
-  path.resolve(import.meta.dirname, `../../../docs/prompts/${variant}.md`),
-  'utf8',
-);
 const workDir = await mkdtemp(path.join(os.tmpdir(), 'agent-economy-'));
 const result = await drive({
   api,

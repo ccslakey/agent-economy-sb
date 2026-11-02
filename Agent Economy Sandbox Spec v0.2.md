@@ -285,7 +285,7 @@ The world is event-sourced: an append-only `events` table in Postgres is the onl
 
 | Table               | Contents                                                                                                  | Kind                |
 | ------------------- | --------------------------------------------------------------------------------------------------------- | ------------------- |
-| `runs`              | Config (jsonb), seed, `experiment_id`, status, start and end times                                        | Source              |
+| `runs`              | Config (jsonb), seed, `experiment_id`, status, start and end times, provenance (jsonb: source revision, CLI version, prompt and docs digests) | Source              |
 | `events`            | `id`, `run_id`, `turn`, `round`, `seq`, `type`, `actor`, `payload` (jsonb), `created_at`                  | Source, append-only |
 | `agent_traces`      | Per agent per round: prompt, response, tool calls, reasoning where exposed, tokens, nominal cost, latency | Source, large blobs |
 | `tool_calls`        | Per agent per tool call: tool, input, output, duration, and the turn and round the API saw when it arrived | Source, what the agent read and did |
@@ -338,6 +338,8 @@ The runner is a separate process that plays every company through the public API
 1. Start a `claude -p` session with the neutral system prompt through `--append-system-prompt`, the company's model and effort through `--model` and `--effort`, the game MCP server through `--mcp-config` and `--strict-mcp-config`, and `--tools` limited to the game tools so the agent has no shell or web access.
 2. The session fetches its observation, docs, and notes through the tools and works until it submits its batch or the API returns `ROUND_CLOSED`.
 3. Read the result with `--output-format json`. Write the transcript, tokens, nominal cost, and latency to `agent_traces` and record `agent_trace_recorded`.
+
+**Provenance.** When the runner creates a run it records what will play it: the git revision of its source, marked `-dirty` when the tree has uncommitted changes, the CLI's version, and a sha256 of the system prompt and of every agent doc. The admin route `/admin/runs/:id/provenance` serves that record with the model ids the CLI resolved each requested model to, read from the run's traces. Two runs months apart compare only when these match or the difference is named; a result is a system result, software plus model, not a model claim.
 
 Agents in a round run concurrently, up to the max concurrent sessions in `limits`. With context persistence `per_round`, every round is a fresh session and the notes file is the agent's only memory across rounds, which also makes its memory inspectable from the dashboard. With `per_turn`, the runner passes `--resume` across the three rounds of a turn and starts fresh each turn. With `persistent`, one session per company plays the whole game: after it acts it calls `wait_for_round`, a free tool that returns when the next round opens with a fresh observation, so the agent keeps its full context, can think ahead between rounds, and answers the farming questions as its final message. Calling `wait_for_round` while the round it names is still open counts as passing that round, so a company that sits out does not hold the others until the wall clock. The API advances rounds itself in that mode, the session is pinned to an id so a crash or a quota pause resumes it, and the `awake` sweep variant was its first test.
 

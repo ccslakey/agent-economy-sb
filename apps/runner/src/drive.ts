@@ -7,6 +7,7 @@ import {
   Contract,
   Observation,
   type Phase,
+  type Provenance,
   RunState,
 } from '@agent-economy/schema';
 import { BOTS, type BotMemory, freshMemory } from './bots.ts';
@@ -96,6 +97,22 @@ export async function createRun(
   });
   if (!response.ok) throw new Error(`create run: ${response.status} ${await response.text()}`);
   return ((await response.json()) as { run_id: string }).run_id;
+}
+
+/** Attach what played the run to it. Done once, right after creation, before any session runs. */
+export async function recordProvenance(
+  api: string,
+  adminToken: string,
+  runId: string,
+  provenance: Provenance,
+): Promise<void> {
+  const response = await fetch(`${api}/admin/runs/${runId}/provenance`, {
+    method: 'PUT',
+    headers: { 'x-admin-token': adminToken, 'content-type': 'application/json' },
+    body: JSON.stringify(provenance),
+  });
+  if (!response.ok)
+    throw new Error(`record provenance: ${response.status} ${await response.text()}`);
 }
 
 export async function drive(options: DriveOptions): Promise<DriveResult> {

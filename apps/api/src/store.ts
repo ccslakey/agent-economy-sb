@@ -1,4 +1,4 @@
-import type { CompanyId, Event, Plan, RunConfig, RunId } from '@agent-economy/schema';
+import type { CompanyId, Event, Plan, Provenance, RunConfig, RunId } from '@agent-economy/schema';
 
 // The only persistence boundary. Events are the source of truth; runs and notes are the two
 // small tables beside them. MemoryStore backs tests, PostgresStore backs real runs.
@@ -11,6 +11,8 @@ export type RunRow = {
   status: RunStatus;
   /** Bearer token per company. Admin only; never leaves the admin routes. */
   tokens: Record<string, string>;
+  /** What played the run: source, CLI, prompt, and docs. Null until the runner records it. */
+  provenance: Provenance | null;
 };
 
 /** One headless session: what was asked, what came back, and what it cost. */
@@ -70,6 +72,7 @@ export interface Store {
   listRuns(): Promise<RunRow[]>;
   getRun(id: RunId): Promise<RunRow | null>;
   setRunStatus(id: RunId, status: RunStatus): Promise<void>;
+  setProvenance(id: RunId, provenance: Provenance): Promise<void>;
   append(runId: RunId, events: readonly Event[]): Promise<void>;
   /** Events with seq greater than `afterSeq`, in seq order. */
   events(runId: RunId, afterSeq?: number): Promise<Event[]>;
@@ -134,6 +137,11 @@ export class MemoryStore implements Store {
     const run = this.runs.get(id);
     if (run === undefined) throw new Error(`no run ${id}`);
     run.status = status;
+  }
+  async setProvenance(id: RunId, provenance: Provenance): Promise<void> {
+    const run = this.runs.get(id);
+    if (run === undefined) throw new Error(`no run ${id}`);
+    run.provenance = structuredClone(provenance);
   }
   async append(runId: RunId, events: readonly Event[]): Promise<void> {
     const log = this.log.get(runId);
