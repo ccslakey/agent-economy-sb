@@ -168,6 +168,22 @@ export class Game {
       }
       return null;
     };
+    await this.serial(async () => {
+      // Waiting for the next round while this one is open is a pass: without it, a company that
+      // sits a round out would hold everyone until the wall clock.
+      const s = this.state;
+      if (
+        s.phase.kind !== 'round' ||
+        s.turn !== after.turn ||
+        s.phase.round !== after.round ||
+        s.submitted.includes(company) ||
+        this.emptyBatches.has(company)
+      ) {
+        return;
+      }
+      this.emptyBatches.add(company);
+      await this.maybeAdvance();
+    });
     const now = ready();
     if (now !== null) return now;
     // The poll timeout is transport time, not game time, so it uses real timers rather than the
