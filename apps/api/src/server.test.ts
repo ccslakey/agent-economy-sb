@@ -212,6 +212,42 @@ describe('agent routes', () => {
     expect(seen.json()).toMatchObject({ round: 3 });
   });
 
+  it('records tool calls with the turn and round the API saw, without spending budget', async () => {
+    const run = await startRun();
+    for (const tool of ['observation', 'docs']) {
+      const posted = await api().inject({
+        method: 'POST',
+        url: '/v1/calls',
+        headers: run.as('c01'),
+        payload: { tool, input: {}, output: 'x'.repeat(21_000), duration_ms: 12 },
+      });
+      expect(posted.statusCode).toBe(201);
+    }
+    const seen = await api().inject({
+      method: 'GET',
+      url: '/v1/observation',
+      headers: run.as('c01'),
+    });
+    expect(seen.json()).toMatchObject({ round_budget: { tool_calls_left: 7 } });
+    const listed = await api().inject({
+      method: 'GET',
+      url: `/admin/runs/${run.run_id}/calls?company=c01`,
+      headers: { 'x-admin-token': 'admin' },
+    });
+    const { calls } = listed.json() as {
+      calls: {
+        tool: string;
+        turn: number;
+        round: number | null;
+        output_chars: number;
+        output: string;
+      }[];
+    };
+    expect(calls.map((c) => c.tool)).toEqual(['observation', 'docs']);
+    expect(calls[0]).toMatchObject({ turn: 1, round: 1, output_chars: 21_000 });
+    expect(calls[0]?.output).toHaveLength(20_000);
+  });
+
   it('treats a persistent session waiting for the next round as passing this one', async () => {
     const run = await startRun(new MemoryStore(), frozenClock(), {
       ...config,

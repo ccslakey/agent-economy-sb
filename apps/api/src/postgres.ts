@@ -2,7 +2,7 @@ import { CompanyId, Event, Plan, RunConfig, RunId } from '@agent-economy/schema'
 import { type Generated, type JSONColumnType, Kysely, PostgresDialect, sql } from 'kysely';
 import pg from 'pg';
 import { z } from 'zod';
-import type { PlanVersion, RunRow, RunStatus, Store, TraceRow } from './store.ts';
+import type { PlanVersion, RunRow, RunStatus, Store, ToolCallRow, TraceRow } from './store.ts';
 
 // Postgres through Kysely: typed SQL with the event log in plain sight. Rows are parsed back
 // through the schema package on the way out, so a bad row fails loudly instead of folding.
@@ -54,6 +54,20 @@ type TracesTable = {
   created_at: Generated<Date>;
 };
 
+type ToolCallsTable = {
+  id: string;
+  run_id: string;
+  company_id: string;
+  turn: number;
+  round: number | null;
+  tool: string;
+  input: JSONColumnType<Record<string, unknown>>;
+  output: string;
+  output_chars: number;
+  duration_ms: number;
+  created_at: Generated<Date>;
+};
+
 type PlansTable = {
   id: Generated<number>;
   run_id: string;
@@ -69,6 +83,7 @@ type Database = {
   events: EventsTable;
   notes: NotesTable;
   agent_traces: TracesTable;
+  tool_calls: ToolCallsTable;
   plan_versions: PlansTable;
 };
 
@@ -151,6 +166,20 @@ export class PostgresStore implements Store {
         created_at timestamptz not null default now()
       )`.execute(this.db);
     await sql`
+      create table if not exists tool_calls (
+        id text primary key,
+        run_id text not null references runs(id),
+        company_id text not null,
+        turn integer not null,
+        round integer,
+        tool text not null,
+        input jsonb not null,
+        output text not null,
+        output_chars integer not null,
+        duration_ms integer not null,
+        created_at timestamptz not null default now()
+      )`.execute(this.db);
+    await sql`
       create table if not exists plan_versions (
         id serial primary key,
         run_id text not null references runs(id),
@@ -229,6 +258,42 @@ export class PostgresStore implements Store {
       .limit(1)
       .executeTakeFirst();
     return row?.turn ?? null;
+  }
+
+  async putToolCall(call: ToolCallRow): Promise<void> {
+    await this.db
+      .insertInto('tool_calls')
+      .values({
+        id: call.id,
+        run_id: call.run_id,
+        company_id: call.company,
+        turn: call.turn,
+        round: call.round,
+        tool: call.tool,
+        input: JSON.stringify(call.input ?? {}),
+        output: call.output,
+        output_chars: call.output_chars,
+        duration_ms: call.duration_ms,
+      })
+      .execute();
+  }
+
+  async listToolCalls(runId: RunId, company?: CompanyId): Promise<ToolCallRow[]> {
+    let query = this.db.selectFrom('tool_calls').selectAll().where('run_id', '=', runId);
+    if (company !== undefined) query = query.where('company_id', '=', company);
+    const rows = await query.orderBy('created_at').execute();
+    return rows.map((row) => ({
+      id: row.id,
+      run_id: RunId.parse(row.run_id),
+      company: CompanyId.parse(row.company_id),
+      turn: row.turn,
+      round: row.round,
+      tool: row.tool,
+      input: row.input,
+      output: row.output,
+      output_chars: row.output_chars,
+      duration_ms: row.duration_ms,
+    }));
   }
 
   async listTraces(runId: RunId, company?: CompanyId): Promise<TraceRow[]> {
