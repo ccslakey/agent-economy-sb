@@ -1,0 +1,223 @@
+# The m6-knobs sweep replayed with every company awake for the whole game (context persistence
+# `persistent`). The first sweep's default rate of 0.55 read as a memory failure once the awake
+# variant defaulted at 0.09, so each knob is measured again where the agents can remember.
+# Same seeds and roster as m6-knobs, paired by seed against the awake baseline.
+#   ADMIN_TOKEN=... node apps/runner/src/sweep.ts --api http://localhost:3010 --sweep configs/sweeps/m6-awake.yaml --concurrency 2
+experiment_id: m6-awake
+seeds: [104, 105, 106]
+base:
+  population:
+    - {
+        id: c01,
+        name: Ironreach,
+        role: miner,
+        driver:
+          { kind: llm, model: sonnet, effort: medium, harness_version: 1, prompt_variant: neutral },
+      }
+    - {
+        id: c03,
+        name: Fellwood,
+        role: logger,
+        driver:
+          { kind: llm, model: sonnet, effort: medium, harness_version: 1, prompt_variant: neutral },
+      }
+    - {
+        id: c05,
+        name: Emberworks,
+        role: smelter,
+        driver:
+          { kind: llm, model: sonnet, effort: medium, harness_version: 1, prompt_variant: neutral },
+      }
+    - {
+        id: c07,
+        name: Birchline Mills,
+        role: mill,
+        driver:
+          { kind: llm, model: sonnet, effort: medium, harness_version: 1, prompt_variant: neutral },
+      }
+    - {
+        id: c09,
+        name: Anvilgate,
+        role: toolmaker,
+        driver:
+          { kind: llm, model: sonnet, effort: medium, harness_version: 1, prompt_variant: neutral },
+      }
+    - {
+        id: c11,
+        name: Hearthstead,
+        role: furniture_maker,
+        driver:
+          { kind: llm, model: sonnet, effort: medium, harness_version: 1, prompt_variant: neutral },
+      }
+  knobs:
+    horizon: { kind: fixed, last_turn: 15 }
+    context_persistence: persistent
+  limits:
+    round_wall_clock_seconds: 900
+    max_concurrent_sessions: 6
+variants:
+  - { name: baseline }
+  - { name: enforcement-off, knobs: { enforcement: "off" } }
+  - { name: needs-board, knobs: { needs_board: "on" } }
+  - { name: penalty-50, economy: { default_penalty_fraction: 0.5 } }
+  - { name: penalty-25, economy: { default_penalty_fraction: 0.25 } }
+  - name: twelve
+    limits: { max_concurrent_sessions: 12 }
+    population:
+      - {
+          id: c01,
+          name: Ironreach,
+          role: miner,
+          driver:
+            {
+              kind: llm,
+              model: sonnet,
+              effort: medium,
+              harness_version: 1,
+              prompt_variant: neutral,
+            },
+        }
+      - {
+          id: c02,
+          name: Deepcut,
+          role: miner,
+          driver:
+            {
+              kind: llm,
+              model: sonnet,
+              effort: medium,
+              harness_version: 1,
+              prompt_variant: neutral,
+            },
+        }
+      - {
+          id: c03,
+          name: Fellwood,
+          role: logger,
+          driver:
+            {
+              kind: llm,
+              model: sonnet,
+              effort: medium,
+              harness_version: 1,
+              prompt_variant: neutral,
+            },
+        }
+      - {
+          id: c04,
+          name: Saltpine,
+          role: logger,
+          driver:
+            {
+              kind: llm,
+              model: sonnet,
+              effort: medium,
+              harness_version: 1,
+              prompt_variant: neutral,
+            },
+        }
+      - {
+          id: c05,
+          name: Emberworks,
+          role: smelter,
+          driver:
+            {
+              kind: llm,
+              model: sonnet,
+              effort: medium,
+              harness_version: 1,
+              prompt_variant: neutral,
+            },
+        }
+      - {
+          id: c06,
+          name: Kilnmark,
+          role: smelter,
+          driver:
+            {
+              kind: llm,
+              model: sonnet,
+              effort: medium,
+              harness_version: 1,
+              prompt_variant: neutral,
+            },
+        }
+      - {
+          id: c07,
+          name: Birchline Mills,
+          role: mill,
+          driver:
+            {
+              kind: llm,
+              model: sonnet,
+              effort: medium,
+              harness_version: 1,
+              prompt_variant: neutral,
+            },
+        }
+      - {
+          id: c08,
+          name: Sawyer and Sons,
+          role: mill,
+          driver:
+            {
+              kind: llm,
+              model: sonnet,
+              effort: medium,
+              harness_version: 1,
+              prompt_variant: neutral,
+            },
+        }
+      - {
+          id: c09,
+          name: Anvilgate,
+          role: toolmaker,
+          driver:
+            {
+              kind: llm,
+              model: sonnet,
+              effort: medium,
+              harness_version: 1,
+              prompt_variant: neutral,
+            },
+        }
+      - {
+          id: c10,
+          name: Quill Forge,
+          role: toolmaker,
+          driver:
+            {
+              kind: llm,
+              model: sonnet,
+              effort: medium,
+              harness_version: 1,
+              prompt_variant: neutral,
+            },
+        }
+      - {
+          id: c11,
+          name: Hearthstead,
+          role: furniture_maker,
+          driver:
+            {
+              kind: llm,
+              model: sonnet,
+              effort: medium,
+              harness_version: 1,
+              prompt_variant: neutral,
+            },
+        }
+      - {
+          id: c12,
+          name: Oakhollow,
+          role: furniture_maker,
+          driver:
+            {
+              kind: llm,
+              model: sonnet,
+              effort: medium,
+              harness_version: 1,
+              prompt_variant: neutral,
+            },
+        }
+  - { name: income-20, economy: { turn_income: 20 } }
