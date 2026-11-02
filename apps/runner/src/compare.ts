@@ -17,7 +17,7 @@ export function flatten(m: RunMetrics): Record<string, number | null> {
     default_rate: m.default_rate,
     penalties: m.penalties,
     trade_value: m.trade_value,
-    welfare: m.welfare,
+    net_worth_gained: m.net_worth_gained,
     gini: m.gini,
     public_messages: m.messages.public,
     dms: m.messages.dm,

@@ -31,9 +31,9 @@ const METRICS = {
     show: (v: number) => `${(v * 100).toFixed(1)}%`,
     badHigh: true,
   },
-  welfare: {
-    label: 'Total welfare',
-    of: (r: Row) => r.metrics.welfare,
+  net_worth_gained: {
+    label: 'Net worth gained',
+    of: (r: Row) => r.metrics.net_worth_gained,
     show: delta,
     badHigh: false,
   },
@@ -362,7 +362,7 @@ export function Compare({
                 <th className="num">Turns</th>
                 <th className="num">Accepted</th>
                 <th className="num">Default rate</th>
-                <th className="num">Welfare</th>
+                <th className="num">Net worth gained</th>
                 <th className="num">Gini</th>
                 <th className="num">Trade value</th>
                 <th className="num">Penalties</th>
@@ -384,7 +384,7 @@ export function Compare({
                   <td className="num">
                     {m.default_rate === null ? '–' : METRICS.default_rate.show(m.default_rate)}
                   </td>
-                  <td className="num">{delta(m.welfare)}</td>
+                  <td className="num">{delta(m.net_worth_gained)}</td>
                   <td className="num">{m.gini.toFixed(2)}</td>
                   <td className="num">{fmt(m.trade_value)}</td>
                   <td className="num">{fmt(m.penalties)}</td>

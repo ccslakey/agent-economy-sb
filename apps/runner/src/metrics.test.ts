@@ -32,7 +32,7 @@ describe('metrics', () => {
     const first = initialState(started);
     const worth = (state: typeof played.state) =>
       Object.values(state.companies).reduce((sum, c) => sum + scoreOf(state, c), 0);
-    expect(m.welfare).toBe(worth(played.state) - worth(first));
+    expect(m.net_worth_gained).toBe(worth(played.state) - worth(first));
     // Starting cash plus the starting inventory at half reference.
     expect(worth(first)).toBeGreaterThan(12 * 600);
     expect(m.bot_handoffs).toBe(0);
