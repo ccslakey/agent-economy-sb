@@ -2,12 +2,13 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import type { RunMetrics } from '@agent-economy/engine';
-import { expandSweep, Sweep, type SweepRun } from '@agent-economy/schema';
+import { fold, type RunMetrics } from '@agent-economy/engine';
+import { type Event, expandSweep, Sweep, type SweepRun } from '@agent-economy/schema';
 import { parse as parseYaml } from 'yaml';
 import { claudeSpawner } from './claude.ts';
 import { type ComparedRun, compareRuns } from './compare.ts';
 import { createRun, drive, recordProvenance } from './drive.ts';
+import { focalTable } from './focal.ts';
 import { collectProvenance } from './provenance.ts';
 
 // Run a sweep: every variant times every seed, a few runs at a time, then the comparison table.
@@ -16,6 +17,7 @@ import { collectProvenance } from './provenance.ts';
 //
 //   ADMIN_TOKEN=... node apps/runner/src/sweep.ts --api http://localhost:3000 --sweep configs/sweeps/m6-knobs.yaml [--concurrency 2]
 //   ADMIN_TOKEN=... node apps/runner/src/sweep.ts --api http://localhost:3000 --compare m6-knobs
+//   ADMIN_TOKEN=... node apps/runner/src/sweep.ts --api http://localhost:3000 --focal m7-focal
 
 const args = new Map<string, string>();
 for (let i = 2; i < process.argv.length; i += 2) {
@@ -61,12 +63,31 @@ async function compare(experiment: string): Promise<void> {
   process.stdout.write(`${compareRuns(await cleanRuns(experiment))}\n`);
 }
 
+/** The focal-company table: each LLM seat against the bot in the same seat, paired by seed. */
+async function focal(experiment: string): Promise<void> {
+  const runs = await cleanRuns(experiment);
+  const folded = await Promise.all(
+    runs.map(async (r) => {
+      const { events } = await admin<{ events: Event[] }>(`/admin/runs/${r.id}/events`);
+      const [started, ...rest] = events;
+      if (started?.type !== 'run_started') throw new Error(`run ${r.id} has no run_started`);
+      return { variant: r.variant, seed: r.seed, state: fold(started, rest) };
+    }),
+  );
+  process.stdout.write(`${focalTable(folded)}\n`);
+}
+
 const compareOnly = args.get('compare');
+const focalOnly = args.get('focal');
 if (compareOnly !== undefined) {
   await compare(compareOnly);
+} else if (focalOnly !== undefined) {
+  await focal(focalOnly);
 } else {
   const sweepPath = args.get('sweep');
-  if (sweepPath === undefined) throw new Error('pass --sweep <file> or --compare <experiment>');
+  if (sweepPath === undefined) {
+    throw new Error('pass --sweep <file>, --compare <experiment>, or --focal <experiment>');
+  }
   const sweep = Sweep.parse(parseYaml(await readFile(sweepPath, 'utf8')));
   const concurrency = Number(args.get('concurrency') ?? 1);
   const variant = args.get('prompt') ?? 'neutral';

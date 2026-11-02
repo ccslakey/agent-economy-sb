@@ -1,0 +1,105 @@
+# Step 5 reputation sweep: the reputation visibility knob at public, own_only, and hidden, with
+# the twelve-company roster so every good has two suppliers and a proposer has a clean
+# alternative to a defaulter. Awake, ten seeds, paired by seed against public. The outcome is the
+# partner-choice report, not the run metrics:
+#   ADMIN_TOKEN=... node apps/runner/src/sweep.ts --api http://localhost:3010 --sweep configs/sweeps/m7-reputation.yaml --concurrency 1
+#   ADMIN_TOKEN=... node apps/runner/src/analyze.ts --api http://localhost:3010 --experiment m7-reputation
+experiment_id: m7-reputation
+seeds: [104, 105, 106, 107, 108, 109, 110, 111, 112, 113]
+base:
+  population:
+    - {
+        id: c01,
+        name: Ironreach,
+        role: miner,
+        driver:
+          { kind: llm, model: sonnet, effort: medium, harness_version: 1, prompt_variant: neutral },
+      }
+    - {
+        id: c02,
+        name: Deepcut,
+        role: miner,
+        driver:
+          { kind: llm, model: sonnet, effort: medium, harness_version: 1, prompt_variant: neutral },
+      }
+    - {
+        id: c03,
+        name: Fellwood,
+        role: logger,
+        driver:
+          { kind: llm, model: sonnet, effort: medium, harness_version: 1, prompt_variant: neutral },
+      }
+    - {
+        id: c04,
+        name: Saltpine,
+        role: logger,
+        driver:
+          { kind: llm, model: sonnet, effort: medium, harness_version: 1, prompt_variant: neutral },
+      }
+    - {
+        id: c05,
+        name: Emberworks,
+        role: smelter,
+        driver:
+          { kind: llm, model: sonnet, effort: medium, harness_version: 1, prompt_variant: neutral },
+      }
+    - {
+        id: c06,
+        name: Kilnmark,
+        role: smelter,
+        driver:
+          { kind: llm, model: sonnet, effort: medium, harness_version: 1, prompt_variant: neutral },
+      }
+    - {
+        id: c07,
+        name: Birchline Mills,
+        role: mill,
+        driver:
+          { kind: llm, model: sonnet, effort: medium, harness_version: 1, prompt_variant: neutral },
+      }
+    - {
+        id: c08,
+        name: Sawyer and Sons,
+        role: mill,
+        driver:
+          { kind: llm, model: sonnet, effort: medium, harness_version: 1, prompt_variant: neutral },
+      }
+    - {
+        id: c09,
+        name: Anvilgate,
+        role: toolmaker,
+        driver:
+          { kind: llm, model: sonnet, effort: medium, harness_version: 1, prompt_variant: neutral },
+      }
+    - {
+        id: c10,
+        name: Quill Forge,
+        role: toolmaker,
+        driver:
+          { kind: llm, model: sonnet, effort: medium, harness_version: 1, prompt_variant: neutral },
+      }
+    - {
+        id: c11,
+        name: Hearthstead,
+        role: furniture_maker,
+        driver:
+          { kind: llm, model: sonnet, effort: medium, harness_version: 1, prompt_variant: neutral },
+      }
+    - {
+        id: c12,
+        name: Oakhollow,
+        role: furniture_maker,
+        driver:
+          { kind: llm, model: sonnet, effort: medium, harness_version: 1, prompt_variant: neutral },
+      }
+  knobs:
+    horizon: { kind: fixed, last_turn: 15 }
+    context_persistence: persistent
+    reputation_visibility: public
+  limits:
+    round_wall_clock_seconds: 900
+    max_concurrent_sessions: 12
+variants:
+  - { name: public }
+  - { name: own-only, knobs: { reputation_visibility: own_only } }
+  - { name: hidden, knobs: { reputation_visibility: hidden } }
