@@ -48,8 +48,8 @@ Done when the spec records the four-cell table and names which cell the earlier 
 
 ### 5. Isolate reputation and model
 
-- [ ] **Reputation sweep.** The existing reputation visibility knob (public, own only, hidden), ten seeds, awake mode, twelve companies so every good has two suppliers, with step 3's partner-choice report as the outcome.
-- [ ] **Focal company.** One LLM company among scripted counterparties, rotated through all six roles, ten seeds per role, compared with the honest-trader bot in the same seat. The bots already propose pay-on-delivery purchases and shun visible defaulters, so the environment responds. Repeat per model to compare models with the population held fixed.
+- [ ] **Reputation sweep.** The existing reputation visibility knob (public, own only, hidden), ten seeds, awake mode, twelve companies so every good has two suppliers, with step 3's partner-choice report as the outcome. Config: `configs/sweeps/m7-reputation.yaml`; outcome through `analyze.ts --experiment m7-reputation`.
+- [ ] **Focal company.** One LLM company among scripted counterparties, rotated through all six roles, ten seeds per role, compared with the honest-trader bot in the same seat. The bots already propose pay-on-delivery purchases and shun visible defaulters, so the environment responds. Repeat per model to compare models with the population held fixed. Config: `configs/sweeps/m7-focal.yaml`, a sweep variant's `drivers` swaps one seat; `sweep.ts --focal m7-focal` prints each seat against the bot in the same seat, paired by seed.
 - [x] **Provenance.** Each run records the source revision, the CLI version, the resolved model id, and the prompt and docs versions, so a comparison across months is still a comparison.
 
 Done when the spec has one table per question with paired differences and a seed count, and names the model as a system result (software plus model), not a model claim.
@@ -64,8 +64,8 @@ Keep this block current at the end of each step.
 
 ```text
 Current step: 5
-Status: Provenance recorded per run; memory sweep config ready in configs/sweeps/m6-memory.yaml, not yet run
-Branch: unit-20-provenance
-Last completed: step 5 provenance (source revision, CLI version, prompt and docs digests, resolved model ids)
-Next action: focal-company sweep shape and per-seat report, reputation sweep config; then run the sweeps when the user says so
+Status: Code done for steps 4 and 5. Sweeps not yet run: configs/sweeps/m6-memory.yaml, m7-reputation.yaml, m7-focal.yaml
+Branch: unit-21-focal
+Last completed: focal-company sweep shape (per-seat driver override), the per-seat table (sweep.ts --focal), and the reputation sweep config
+Next action: run the three sweeps when the user says so, in the order memory, reputation, focal; record each table in the spec's Decisions with its caveats
 ```
