@@ -31,6 +31,23 @@ export type TraceRow = {
   duration_ms: number;
 };
 
+/** One tool call an agent made through the MCP server, with the turn and round the API saw when it arrived. */
+export type ToolCallRow = {
+  id: string;
+  run_id: RunId;
+  company: CompanyId;
+  turn: number;
+  round: number | null;
+  tool: string;
+  input: unknown;
+  /** The text the tool returned, cut at `TOOL_OUTPUT_MAX_CHARS`; `output_chars` is the full length. */
+  output: string;
+  output_chars: number;
+  duration_ms: number;
+};
+
+export const TOOL_OUTPUT_MAX_CHARS = 20_000;
+
 /** One revision of a company's plan. Every PUT is kept, so the dashboard can show how it changed. */
 export type PlanVersion = {
   run_id: RunId;
@@ -47,6 +64,8 @@ export interface Store {
   listPlans(runId: RunId, company?: CompanyId): Promise<PlanVersion[]>;
   putTrace(trace: TraceRow): Promise<void>;
   listTraces(runId: RunId, company?: CompanyId): Promise<TraceRow[]>;
+  putToolCall(call: ToolCallRow): Promise<void>;
+  listToolCalls(runId: RunId, company?: CompanyId): Promise<ToolCallRow[]>;
   createRun(run: RunRow): Promise<void>;
   listRuns(): Promise<RunRow[]>;
   getRun(id: RunId): Promise<RunRow | null>;
@@ -65,6 +84,7 @@ export class MemoryStore implements Store {
   private readonly log = new Map<RunId, Event[]>();
   private readonly notes = new Map<string, string>();
   private readonly traces: TraceRow[] = [];
+  private readonly calls: ToolCallRow[] = [];
   private readonly plans: PlanVersion[] = [];
 
   async putPlan(version: PlanVersion): Promise<void> {
@@ -87,6 +107,15 @@ export class MemoryStore implements Store {
     return this.traces
       .filter((t) => t.run_id === runId && (company === undefined || t.company === company))
       .map((t) => structuredClone(t));
+  }
+
+  async putToolCall(call: ToolCallRow): Promise<void> {
+    this.calls.push(structuredClone(call));
+  }
+  async listToolCalls(runId: RunId, company?: CompanyId): Promise<ToolCallRow[]> {
+    return this.calls
+      .filter((c) => c.run_id === runId && (company === undefined || c.company === company))
+      .map((c) => structuredClone(c));
   }
 
   async createRun(run: RunRow): Promise<void> {

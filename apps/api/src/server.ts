@@ -14,7 +14,7 @@ import {
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { Game, type GameOptions } from './game.ts';
-import type { RunRow, Store, TraceRow } from './store.ts';
+import { type RunRow, type Store, TOOL_OUTPUT_MAX_CHARS, type TraceRow } from './store.ts';
 
 // The only boundary agents cross. Agent routes under /v1 take a bearer token per company and
 // spend one tool call each. Admin routes create and drive runs and take the admin token.
@@ -95,7 +95,8 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
     // After the game ends an agent may still read its notes, plan, and the final state for its
     // debrief; only the round budget is closed, so writes keep failing with ROUND_CLOSED.
     const debrief = agent.game.state.phase.kind === 'ended' && request.method === 'GET';
-    if (!request.url.startsWith('/v1/wait') && !debrief) {
+    const free = request.url.startsWith('/v1/wait') || request.url.startsWith('/v1/calls');
+    if (!free && !debrief) {
       const spent = agent.game.spend(agent.company.id);
       if (spent !== null) return fail(reply, spent);
     }
@@ -123,6 +124,37 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
     }
     const { turn, round, timeout_ms } = query.data;
     return game.waitForRound(company.id, { turn, round }, timeout_ms);
+  });
+
+  const CallBody = z.object({
+    tool: z.string().min(1).max(100),
+    input: z.unknown(),
+    output: z.string(),
+    duration_ms: z.number().int().nonnegative(),
+  });
+
+  // The MCP server posts every tool call here so a run's record shows what each agent read and
+  // did, with the turn and round as the API saw them. Free: it is the runner's log, not a move.
+  app.post('/v1/calls', async (request, reply) => {
+    const body = CallBody.safeParse(request.body);
+    if (!body.success) {
+      return reply.code(400).send({ code: 'INVALID_CALL', reason: 'bad tool call body' });
+    }
+    const { game, company } = request.agent;
+    const call = {
+      id: randomUUID(),
+      run_id: game.id,
+      company: company.id,
+      turn: game.state.turn,
+      round: game.state.phase.kind === 'round' ? game.state.phase.round : null,
+      tool: body.data.tool,
+      input: body.data.input ?? null,
+      output: body.data.output.slice(0, TOOL_OUTPUT_MAX_CHARS),
+      output_chars: body.data.output.length,
+      duration_ms: body.data.duration_ms,
+    };
+    await options.store.putToolCall(call);
+    return reply.code(201).send({ id: call.id });
   });
 
   app.get('/v1/observation', async (request) => {
@@ -457,6 +489,14 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
     if (!id.success) return reply.code(404).send({ code: 'NOT_FOUND', reason: 'no such run' });
     const { company } = CompanyQuery.parse(request.query);
     return { traces: await options.store.listTraces(id.data, company) };
+  });
+
+  app.get<{ Params: { id: string } }>('/admin/runs/:id/calls', async (request, reply) => {
+    if (!(await admin(request, reply))) return;
+    const id = RunId.safeParse(request.params.id);
+    if (!id.success) return reply.code(404).send({ code: 'NOT_FOUND', reason: 'no such run' });
+    const { company } = CompanyQuery.parse(request.query);
+    return { calls: await options.store.listToolCalls(id.data, company) };
   });
 
   /** Sessions, tokens, cost, and latency rolled up by company and by model. The traces themselves stay on the traces route. */

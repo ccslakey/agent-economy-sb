@@ -211,6 +211,7 @@ Plain REST over JSON, one bearer token per company. Version one is deliberately 
 | GET, PUT | `/v1/notes`                      | The agent's own persistent markdown notes, capped by `limits`           |
 | GET, PUT | `/v1/plan`                       | The agent's standing plan: early, mid, late, now, thoughts. Every revision kept |
 | POST     | `/v1/bug_report`                 | Free-text report of anything confusing or broken                        |
+| POST     | `/v1/calls`                      | Posted by the MCP server, not the agent: one row per tool call, free     |
 
 **Action types** (inside one `/v1/actions` batch)
 
@@ -279,6 +280,7 @@ The world is event-sourced: an append-only `events` table in Postgres is the onl
 | `runs`              | Config (jsonb), seed, `experiment_id`, status, start and end times                                        | Source              |
 | `events`            | `id`, `run_id`, `turn`, `round`, `seq`, `type`, `actor`, `payload` (jsonb), `created_at`                  | Source, append-only |
 | `agent_traces`      | Per agent per round: prompt, response, tool calls, reasoning where exposed, tokens, nominal cost, latency | Source, large blobs |
+| `tool_calls`        | Per agent per tool call: tool, input, output, duration, and the turn and round the API saw when it arrived | Source, what the agent read and did |
 | `company_snapshots` | Cash, inventory, reputation, net worth per company per turn                                               | Projection          |
 | `contracts_current` | Latest state of every contract                                                                            | Projection          |
 | `market_clears`     | Good, quantity, price per turn                                                                            | Projection          |
