@@ -1,3 +1,14 @@
+export {
+  type AnalysisSummary,
+  type CapitalRow,
+  capitalRows,
+  type DefaultCase,
+  type DefaultLabel,
+  defaultCases,
+  type ProposalCase,
+  proposalCases,
+  summarize,
+} from './analysis.ts';
 export { describe } from './describe.ts';
 export { addGoods, apply, fold, initialState } from './fold.ts';
 export { type ContractCounts, gini, type RunMetrics, runMetrics } from './metrics.ts';
