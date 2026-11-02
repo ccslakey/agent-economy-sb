@@ -293,10 +293,17 @@ describe('agent routes', () => {
       population: { llm: 0, bot: 2, models: [] },
       cost: { sessions: 0, tokens_in: 0, tokens_out: 0, cost_usd: 0 },
     });
-    const closed = await api().inject({
+    const debrief = await api().inject({
       method: 'GET',
-      url: '/v1/observation',
+      url: '/v1/notes',
       headers: run.as('c05'),
+    });
+    expect(debrief.statusCode).toBe(200);
+    const closed = await api().inject({
+      method: 'POST',
+      url: '/v1/actions',
+      headers: run.as('c05'),
+      payload: { actions: [] },
     });
     expect(closed.statusCode).toBe(409);
     await api().close();
