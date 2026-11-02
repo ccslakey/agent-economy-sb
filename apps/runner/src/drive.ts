@@ -315,7 +315,10 @@ export async function drive(options: DriveOptions): Promise<DriveResult> {
       const after = await stateNow();
       // A whole-game session is one trace. Its final message is the farming answer when the
       // game ended, so it is recorded under that kind once rather than as a round and again as farming.
-      const ended = result.ok && after.phase.kind === 'ended';
+      // A bankrupt company has nothing left to play, so its last message is its debrief too.
+      const out =
+        after.phase.kind === 'ended' || after.companies[company]?.standing.kind === 'bankrupt';
+      const ended = result.ok && out;
       await recordTrace(
         company,
         after.turn,
