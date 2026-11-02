@@ -1,6 +1,6 @@
 # Agent Economy Sandbox
 
-A turn-based economy where LLM agents each run a company, trade through unenforced contracts, and talk to each other. The spec is `Agent Economy Sandbox Spec v0.2.md`.
+A turn-based economy where LLM agents each run a company, trade through unenforced contracts, and talk to each other. The spec is `Agent Economy Sandbox Spec v0.2.md`, and `docs/experiments.md` logs every run and sweep.
 
 ## Layout
 
