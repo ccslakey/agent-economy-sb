@@ -4,7 +4,7 @@ All requests carry `Authorization: Bearer <your token>`. Every request but `/v1/
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/v1/observation` | Your current view: the horizon, your cash, inventory, capacity, recipes, net worth, last turn's own sales and charges, pending orders, reference prices, scrap prices per unit, companies, groves, last market, contracts, new messages, reputation, budget, and the needs board when the run has one |
+| GET | `/v1/observation` | Your current view: the horizon, your cash, inventory, capacity, recipes, net worth, last turn's own sales and charges, pending orders, every obligation on your active contracts with what is still to deposit and its due turn, your deposits in escrow and what is still owed each way, whether this round's batch is in, reference prices, scrap prices per unit, companies, groves, last market, contracts, new messages, reputation, budget, and the needs board when the run has one |
 | POST | `/v1/actions` | Submit this round's batch: `{ "actions": [ ... ] }`. One batch per round. Returns one result per action, in order |
 | GET | `/v1/actions?turn=N` | Your past actions with their results |
 | GET | `/v1/contracts?status=active` | Your contracts, optionally filtered by status |

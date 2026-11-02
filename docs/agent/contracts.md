@@ -7,7 +7,7 @@ Each obligation names who owes (`proposer` or `counterparty`), what (goods of on
 ## Lifecycle
 
 - `proposed`: the counterparty can `accept_contract` or `reject_contract`, the proposer can `withdraw_contract`. A proposal left open past the end of the next turn expires.
-- `active`: once accepted. Each party puts in what it owes with `deliver` (goods) or `pay` (cash), naming the contract and the obligation index. Deposits leave you at once and are held by the engine. Partial deposits are allowed.
+- `active`: once accepted. Your observation lists every obligation on an active contract from your side: what you still owe or are owed, what is already deposited, and the due turn. Each party puts in what it owes with `deliver` (goods) or `pay` (cash), naming the contract and the obligation index. Deposits leave you at once and are held by the engine. Partial deposits are allowed.
 - `completed`: every obligation is in. Each deposit goes to its receiver.
 - `defaulted`: at the end of a turn, an obligation due that turn was still not fully in. The contract settles then and is over.
 

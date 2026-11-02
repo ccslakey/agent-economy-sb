@@ -240,7 +240,10 @@ The response returns a result per action, in order. A failed action never blocks
     "cash": 1840,
     "inventory": { "timber": 4, "plank": 9 },
     "capacity": { "plank": 6 },
-    "pending_orders": { "produce": { "plank": 4 } }
+    "pending_orders": { "produce": { "plank": 4 } },
+    "in_escrow": { "cash": 0, "goods": { "plank": 6 } },
+    "still_owed_by_you": { "cash": 0, "goods": {} },
+    "still_owed_to_you": { "cash": 270, "goods": {} }
   },
   "groves": [{ "id": "g1", "stock": 18 }, { "id": "g2", "stock": 3 }],
   "market": {
@@ -252,6 +255,10 @@ The response returns a result per action, in order. A failed action never blocks
   "companies": [{ "id": "c03", "name": "Fellwood", "roles": ["logger"], "model": null }],
   "contracts": {
     "active": ["k112"],
+    "obligations": [
+      { "contract": "k112", "obligation": 0, "counterparty": "c11", "direction": "you_owe", "kind": "goods", "good": "plank", "remaining": 0, "deposited": 6, "due_turn": 14, "turns_left": 0 },
+      { "contract": "k112", "obligation": 1, "counterparty": "c11", "direction": "owed_to_you", "kind": "cash", "remaining": 270, "deposited": 0, "due_turn": 15, "turns_left": 1 }
+    ],
     "proposed_to_you": ["k131"],
     "changed_since_last_round": ["k108"]
   },
@@ -259,7 +266,7 @@ The response returns a result per action, in order. A failed action never blocks
   "reputation": {
     "c03": { "completed": 6, "defaulted": 0, "value_defaulted": 0 }
   },
-  "round_budget": { "tool_calls_left": 6 }
+  "round_budget": { "tool_calls_left": 6, "submitted": "none" }
 }
 ```
 

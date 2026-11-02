@@ -223,7 +223,13 @@ export class Game {
   }
 
   observation(company: Company): Observation {
-    return observe(this.state, company, this.news, this.budgetLeft(company.id));
+    return observe(
+      this.state,
+      company,
+      this.news,
+      this.budgetLeft(company.id),
+      this.emptyBatches.has(company.id),
+    );
   }
 
   /** POST /v1/actions. Parses at the boundary, hands valid actions to the engine, and maps results back to batch order. */

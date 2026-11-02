@@ -3,6 +3,29 @@ import { CompanyId, ContractId, GroveId } from './ids.ts';
 import { Message, PendingOrders } from './state.ts';
 import { Cash, FinalGood, Good, Inventory, Qty, Role, Round, Turn } from './world.ts';
 
+/** Cash and goods held by the engine or still promised, summed over a company's active contracts. */
+export const Holding = z.object({ cash: Cash, goods: Inventory });
+export type Holding = z.infer<typeof Holding>;
+
+/** One obligation on an active contract, seen from one company's side. */
+export const ObligationView = z.object({
+  contract: ContractId,
+  /** Position in the contract's obligations, as `deliver` and `pay` name it. */
+  obligation: z.number().int().nonnegative(),
+  counterparty: CompanyId,
+  direction: z.enum(['you_owe', 'owed_to_you']),
+  kind: z.enum(['goods', 'cash']),
+  good: Good.optional(),
+  /** Units or cash still to deposit. Zero means this side is done. */
+  remaining: z.number().nonnegative(),
+  /** Units or cash already deposited with the engine. */
+  deposited: z.number().nonnegative(),
+  due_turn: Turn,
+  /** Turns until the due turn ends. Zero means it must be in by the end of this turn. */
+  turns_left: z.number().int(),
+});
+export type ObligationView = z.infer<typeof ObligationView>;
+
 // GET /v1/observation. A view computed by the engine from RunState for one company; never stored.
 // Shapes follow the spec's example where it gives one.
 
@@ -47,6 +70,12 @@ export const Observation = z.object({
       storage_units: Qty,
       income: Cash,
     }),
+    /** Your deposits the engine holds on active contracts. `cash` and `inventory` above already exclude them. */
+    in_escrow: Holding,
+    /** What you have promised on active contracts and not yet deposited. */
+    still_owed_by_you: Holding,
+    /** What counterparties have promised you on active contracts and not yet deposited. */
+    still_owed_to_you: Holding,
   }),
   /** The NPC buys any good as scrap at this price per unit, any quantity, in the operations step. */
   scrap_per_unit: z.record(Good, z.number()),
@@ -75,6 +104,8 @@ export const Observation = z.object({
   market: z.object({ last_turn: z.partialRecord(FinalGood, z.object({ qty: Qty, price: Cash })) }),
   contracts: z.object({
     active: z.array(ContractId),
+    /** Every obligation on your active contracts, from your side, soonest due first. */
+    obligations: z.array(ObligationView),
     proposed_to_you: z.array(ContractId),
     proposed_by_you: z.array(ContractId),
     changed_since_last_round: z.array(ContractId),
@@ -82,7 +113,11 @@ export const Observation = z.object({
   messages: z.object({ public: z.array(Message), dms: z.array(Message) }),
   /** null when the reputation knob hides it; own entry only under `own_only`. */
   reputation: z.partialRecord(CompanyId, Reputation).nullable(),
-  round_budget: z.object({ tool_calls_left: z.number().int().nonnegative() }),
+  round_budget: z.object({
+    tool_calls_left: z.number().int().nonnegative(),
+    /** Whether this round's batch is in: not yet, an empty batch, or a batch of actions. */
+    submitted: z.enum(['none', 'empty', 'batch']),
+  }),
 });
 export type Observation = z.infer<typeof Observation>;
 
