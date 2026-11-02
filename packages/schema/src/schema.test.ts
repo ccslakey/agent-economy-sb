@@ -9,6 +9,7 @@ import {
   EVENT_TYPES,
   Event,
   type EventType,
+  expandSweep,
   FINAL_GOODS,
   GOODS,
   parseActionBatch,
@@ -16,6 +17,7 @@ import {
   ROLE_NAMES,
   ROLES,
   RunConfig,
+  Sweep,
 } from './index.ts';
 
 // Unit 1's rerunnable check. Each test asserts a literal the spec states or a property the
@@ -268,5 +270,51 @@ describe('events', () => {
     const e = Event.parse(eventFixtures.contract_defaulted);
     if (e.type !== 'contract_defaulted') throw new Error('wrong type');
     expect(e.payload.by).toEqual(['proposer']);
+  });
+});
+
+describe('sweep', () => {
+  const bot = { kind: 'bot', strategy: 'honest_trader' };
+  const llm = {
+    kind: 'llm',
+    model: 'sonnet',
+    effort: 'medium',
+    harness_version: 1,
+    prompt_variant: 'neutral',
+  };
+  const sweep = {
+    experiment_id: 'focal',
+    seeds: [1, 2],
+    base: {
+      population: [
+        { id: 'c01', name: 'Ironreach', role: 'miner', driver: bot },
+        { id: 'c05', name: 'Emberworks', role: 'smelter', driver: bot },
+      ],
+      knobs: { context_persistence: 'persistent' },
+    },
+    variants: [{ name: 'bots' }, { name: 'llm-miner', drivers: { c01: llm } }],
+  };
+
+  it("expands every variant by every seed and swaps one seat's driver", () => {
+    const runs = expandSweep(Sweep.parse(sweep));
+    expect(runs.map((r) => [r.variant, r.seed])).toEqual([
+      ['bots', 1],
+      ['bots', 2],
+      ['llm-miner', 1],
+      ['llm-miner', 2],
+    ]);
+    const focal = runs[2]?.config;
+    expect(focal?.experiment_id).toBe('focal/llm-miner');
+    expect(focal?.population.map((p) => p.driver.kind)).toEqual(['llm', 'bot']);
+    expect(focal?.knobs.context_persistence).toBe('persistent');
+    expect(runs[0]?.config.population.map((p) => p.driver.kind)).toEqual(['bot', 'bot']);
+  });
+
+  it('refuses a driver for a company the population does not have', () => {
+    const bad = Sweep.parse({
+      ...sweep,
+      variants: [{ name: 'llm-mill', drivers: { c07: llm } }],
+    });
+    expect(() => expandSweep(bad)).toThrow(/c07/);
   });
 });

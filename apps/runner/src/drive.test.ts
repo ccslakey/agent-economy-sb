@@ -227,6 +227,27 @@ describe('drive', () => {
     const first = farming[0]?.result as { prompt: string } | undefined;
     expect(first?.prompt).toContain('plays the whole game');
   });
+  it('plays an all-bot persistent run with no session at all, as the focal sweep baseline does', async () => {
+    const bot = { kind: 'bot', strategy: 'honest_trader' };
+    const scripted = {
+      ...config,
+      population: config.population.map((p) => ({ ...p, driver: bot })),
+      knobs: { ...config.knobs, context_persistence: 'persistent' },
+      limits: { ...config.limits, auto_advance: true },
+    };
+    const never: Spawner = async () => {
+      throw new Error('no session should start');
+    };
+    const { result, events, traces } = await start(never, 1, scripted);
+    expect(result.turns).toBe(2);
+    expect(result.sessions).toBe(0);
+    expect(traces).toHaveLength(0);
+    expectEnded(events);
+    for (const id of ['c01', 'c05', 'c09']) {
+      expect(events.some((e) => e.type === 'action_submitted' && e.actor === id)).toBe(true);
+    }
+  });
+
   it('pauses the run on a quota error and resumes before retrying', async () => {
     let calls = 0;
     const flaky: Spawner = async (request) => {
