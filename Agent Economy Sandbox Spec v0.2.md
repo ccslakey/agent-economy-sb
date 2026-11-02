@@ -183,6 +183,8 @@ A run is fully described by one config file plus a seed. All engine randomness (
 | Context persistence     | `per_round` (fresh session every round), `per_turn` (one session across the three rounds, reset each turn), `persistent` (one session for the whole game that waits between rounds and keeps its context) | `per_round`        |
 | Demand profile          | `default`, plus named profiles added only as deliberate experiments                                        | `default`          |
 | Needs board             | `off`, `on` (the observation lists every company's input shortfall and output stock)                      | `off`              |
+| Notes                   | `on`, `off` (no notes or plan: reads return empty, writes fail with `MEMORY_OFF`, the tools are hidden)   | `on`               |
+| History                 | `full`, `current` (past actions, contracts, and messages show only the open turn and live contracts)      | `full`             |
 
 Enforcement sets the penalty a failing party pays at settlement. Deposits are held and refunded to a performing party under either setting, so the knob changes only how much failing costs.
 

@@ -83,6 +83,21 @@ describe('mcp tools', () => {
     ]);
   });
 
+  it('hides the notes and plan tools when the run has notes off', async () => {
+    const bare = buildMcpServer(new GameClient({ baseUrl: 'http://127.0.0.1:1', token: 'x' }), {
+      notes: false,
+    });
+    const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+    await bare.connect(serverSide);
+    const probe = new Client({ name: 'probe', version: '0' });
+    await probe.connect(clientSide);
+    const { tools } = await probe.listTools();
+    expect(tools.map((t) => t.name)).not.toContain('read_notes');
+    expect(tools.map((t) => t.name)).not.toContain('write_plan');
+    expect(tools).toHaveLength(8);
+    await probe.close();
+  });
+
   it('observes, submits, and reads back, spending the budget as it goes', async () => {
     const seen = JSON.parse(text(await client.callTool({ name: 'observation', arguments: {} })));
     expect(seen).toMatchObject({

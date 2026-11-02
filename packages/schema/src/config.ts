@@ -76,6 +76,10 @@ export const Knobs = z.object({
   demand_profile: z.string().default('default'),
   /** `on` shows every company's input shortfalls and output stock in the observation. */
   needs_board: z.enum(['off', 'on']).default('off'),
+  /** `off` removes the notes and plan: reads return empty, writes fail with MEMORY_OFF, and the MCP server hides the tools. */
+  notes: z.enum(['on', 'off']).default('on'),
+  /** `current` limits past actions, contracts, and messages to the open turn and live contracts, so a fresh session has no history channel. */
+  history: z.enum(['full', 'current']).default('full'),
 });
 export type Knobs = z.infer<typeof Knobs>;
 

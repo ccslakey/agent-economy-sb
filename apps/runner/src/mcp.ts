@@ -36,6 +36,8 @@ const Text = z.string().min(1).max(500);
 export type McpOptions = {
   /** Expose wait_for_round. Only a persistent session may block on it: in a per-round session it would hold the round open until the wall clock. */
   wait?: boolean;
+  /** Expose the notes and plan tools. Off when the run's notes knob is off, so a memory condition has no notes channel. */
+  notes?: boolean;
 };
 
 export function buildMcpServer(client: GameClient, options: McpOptions = {}): McpServer {
@@ -139,68 +141,70 @@ export function buildMcpServer(client: GameClient, options: McpOptions = {}): Mc
     ),
   );
 
-  server.registerTool(
-    'read_plan',
-    {
-      description:
-        'Your standing game plan: early, mid, and late game, what you are doing now, and your thoughts on how the game is going. Null before you write one.',
-      inputSchema: {},
-    },
-    logged('read_plan', () => asText(client.call('GET', '/v1/plan'))),
-  );
-
-  server.registerTool(
-    'write_plan',
-    {
-      description:
-        'Write or revise your game plan. Give every field, each under 600 characters: early (your opening), mid (the middle game), late (the endgame), now (what you are doing this turn and why), thoughts (how you feel the game is going). Every revision is kept.',
-      inputSchema: {
-        early: z.string(),
-        mid: z.string(),
-        late: z.string(),
-        now: z.string(),
-        thoughts: z.string(),
-      },
-    },
-    logged('write_plan', (plan) => asText(client.call('PUT', '/v1/plan', plan))),
-  );
-
-  server.registerTool(
-    'read_notes',
-    {
-      description: 'Your private notes from earlier rounds. Your only memory between rounds.',
-      inputSchema: {},
-    },
-    logged('read_notes', () => asText(client.call('GET', '/v1/notes'))),
-  );
-
-  server.registerTool(
-    'write_notes',
-    {
-      description:
-        'Replace your private notes. Keep them short; there is a length cap. Write what your future self needs to know.',
-      inputSchema: { text: z.string() },
-    },
-    logged('write_notes', ({ text }) => asText(client.call('PUT', '/v1/notes', { text }))),
-  );
-
-  if (options.wait === true)
+  if (options.notes !== false) {
     server.registerTool(
-      'wait_for_round',
+      'read_plan',
       {
         description:
-          'Wait until the next round opens, then return your fresh observation. Pass the turn and round you just acted in, from your observation. Returns status "ended" with the final scores when the game is over. Spends no tool call. For a session that plays the whole game.',
-        inputSchema: { turn: z.number().int(), round: z.number().int() },
+          'Your standing game plan: early, mid, and late game, what you are doing now, and your thoughts on how the game is going. Null before you write one.',
+        inputSchema: {},
       },
-      logged('wait_for_round', async ({ turn, round }) => {
-        for (;;) {
-          const text = await client.call('GET', `/v1/wait?turn=${turn}&round=${round}`);
-          if (text.startsWith('HTTP ')) return { content: [{ type: 'text' as const, text }] };
-          const { status } = JSON.parse(text) as { status: string };
-          if (status !== 'waiting') return { content: [{ type: 'text' as const, text }] };
-        }
-      }),
+      logged('read_plan', () => asText(client.call('GET', '/v1/plan'))),
     );
+
+    server.registerTool(
+      'write_plan',
+      {
+        description:
+          'Write or revise your game plan. Give every field, each under 600 characters: early (your opening), mid (the middle game), late (the endgame), now (what you are doing this turn and why), thoughts (how you feel the game is going). Every revision is kept.',
+        inputSchema: {
+          early: z.string(),
+          mid: z.string(),
+          late: z.string(),
+          now: z.string(),
+          thoughts: z.string(),
+        },
+      },
+      logged('write_plan', (plan) => asText(client.call('PUT', '/v1/plan', plan))),
+    );
+
+    server.registerTool(
+      'read_notes',
+      {
+        description: 'Your private notes from earlier rounds. Your only memory between rounds.',
+        inputSchema: {},
+      },
+      logged('read_notes', () => asText(client.call('GET', '/v1/notes'))),
+    );
+
+    server.registerTool(
+      'write_notes',
+      {
+        description:
+          'Replace your private notes. Keep them short; there is a length cap. Write what your future self needs to know.',
+        inputSchema: { text: z.string() },
+      },
+      logged('write_notes', ({ text }) => asText(client.call('PUT', '/v1/notes', { text }))),
+    );
+
+    if (options.wait === true)
+      server.registerTool(
+        'wait_for_round',
+        {
+          description:
+            'Wait until the next round opens, then return your fresh observation. Pass the turn and round you just acted in, from your observation. Returns status "ended" with the final scores when the game is over. Spends no tool call. For a session that plays the whole game.',
+          inputSchema: { turn: z.number().int(), round: z.number().int() },
+        },
+        logged('wait_for_round', async ({ turn, round }) => {
+          for (;;) {
+            const text = await client.call('GET', `/v1/wait?turn=${turn}&round=${round}`);
+            if (text.startsWith('HTTP ')) return { content: [{ type: 'text' as const, text }] };
+            const { status } = JSON.parse(text) as { status: string };
+            if (status !== 'waiting') return { content: [{ type: 'text' as const, text }] };
+          }
+        }),
+      );
+  }
 
   server.registerTool(
     'bug_report',
@@ -224,6 +228,7 @@ if (isMain) {
   }
   const server = buildMcpServer(new GameClient({ baseUrl, token }), {
     wait: process.env.AGENT_ECONOMY_PERSISTENT === '1',
+    notes: process.env.AGENT_ECONOMY_NOTES !== '0',
   });
   await server.connect(new StdioServerTransport());
 }

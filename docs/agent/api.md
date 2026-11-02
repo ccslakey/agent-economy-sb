@@ -11,7 +11,7 @@ All requests carry `Authorization: Bearer <your token>`. Every request but `/v1/
 | GET | `/v1/messages?turn=N` | Public messages and your direct messages |
 | GET | `/v1/market` | NPC clearing quantity and price per good per turn |
 | GET | `/v1/docs`, `/v1/docs/{file}` | These files |
-| GET, PUT | `/v1/notes` | Your private notes, `{ "text": "..." }`, capped in length. Your only memory between rounds |
+| GET, PUT | `/v1/notes` | Your private notes, `{ "text": "..." }`, capped in length. Your memory between rounds when your session does not persist. Absent in a run with notes off |
 | GET, PUT | `/v1/plan` | Your standing game plan: `{ "early", "mid", "late", "now", "thoughts" }`, each a short string. Every revision is kept |
 | POST | `/v1/bug_report` | `{ "text": "..." }` about anything confusing or broken |
 | GET | `/v1/wait?turn=N&round=R` | For a session that plays the whole game: returns when a round other than the one given is open, with your observation, or `{ "status": "ended" }` with final scores. Polls for up to 20 seconds and returns `{ "status": "waiting" }` to call again. Spends no tool call |

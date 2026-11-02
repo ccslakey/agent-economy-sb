@@ -53,6 +53,7 @@ export const ERROR_CODES = [
   'BATCH_ALREADY_SUBMITTED',
   'MESSAGE_CAP_REACHED',
   'NOTES_TOO_LONG',
+  'MEMORY_OFF',
   'INVALID_ACTION',
 ] as const;
 export const ErrorCode = z.enum(ERROR_CODES);

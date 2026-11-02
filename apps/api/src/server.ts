@@ -174,11 +174,13 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
   app.get('/v1/actions', async (request) => {
     const { game, company } = request.agent;
     const { turn } = TurnQuery.parse(request.query);
+    const current = game.state.config.knobs.history === 'current';
     const own = game.log.filter(
       (e) =>
         (e.type === 'action_submitted' || e.type === 'action_rejected') &&
         e.actor === company.id &&
-        (turn === undefined || e.turn === turn),
+        (turn === undefined || e.turn === turn) &&
+        (!current || e.turn === game.state.turn),
     );
     return {
       actions: own.map((e) =>
@@ -210,9 +212,11 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
   app.get('/v1/contracts', async (request) => {
     const { game, company } = request.agent;
     const { status } = StatusQuery.parse(request.query);
+    const current = game.state.config.knobs.history === 'current';
     const mine = Object.values(game.state.contracts)
       .filter((k) => k.proposer === company.id || k.counterparty === company.id)
       .filter((k) => status === undefined || k.status.status === status)
+      .filter((k) => !current || k.status.status === 'proposed' || k.status.status === 'active')
       .sort((a, b) => (a.id < b.id ? -1 : 1));
     return { contracts: mine };
   });
@@ -220,9 +224,11 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
   app.get('/v1/messages', async (request) => {
     const { game, company } = request.agent;
     const { turn } = TurnQuery.parse(request.query);
+    const current = game.state.config.knobs.history === 'current';
     const visible = game.state.messages.filter(
       (m) =>
         (turn === undefined || m.turn === turn) &&
+        (!current || m.turn === game.state.turn) &&
         (m.channel.kind === 'public' || m.from === company.id || m.channel.to === company.id),
     );
     return { messages: visible };
@@ -246,8 +252,11 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
     return reply.type('text/markdown').send(text);
   });
 
+  const memoryOff = { code: 'MEMORY_OFF' as const, reason: 'this run has notes and plan off' };
+
   app.get('/v1/notes', async (request) => {
     const { game, company } = request.agent;
+    if (game.state.config.knobs.notes === 'off') return { text: '' };
     return { text: await options.store.getNotes(game.id, company.id) };
   });
 
@@ -255,11 +264,13 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
 
   app.get('/v1/plan', async (request) => {
     const { game, company } = request.agent;
+    if (game.state.config.knobs.notes === 'off') return { plan: null };
     return { plan: await options.store.getPlan(game.id, company.id) };
   });
 
   app.put('/v1/plan', async (request, reply) => {
     const { game, company } = request.agent;
+    if (game.state.config.knobs.notes === 'off') return fail(reply, memoryOff);
     const body = Plan.safeParse(request.body);
     if (!body.success) {
       return fail(reply, {
@@ -279,6 +290,7 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
 
   app.put('/v1/notes', async (request, reply) => {
     const { game, company } = request.agent;
+    if (game.state.config.knobs.notes === 'off') return fail(reply, memoryOff);
     const body = NotesBody.safeParse(request.body);
     if (!body.success)
       return fail(reply, { code: 'INVALID_ACTION', reason: 'body must be { text }' });

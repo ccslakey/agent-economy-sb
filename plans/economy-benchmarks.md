@@ -40,8 +40,8 @@ Done when the three reports run against the existing database and `docs/experime
 
 ### 4. Isolate memory
 
-- [ ] **Notes toggle.** A knob turns notes and plan off. Reads return empty and writes are refused with a clear error.
-- [ ] **History policy.** One knob governs access to past actions, contract history, and message history, so a fresh-session agent with notes off has no memory channel. Current obligations stay visible through step 2.
+- [x] **Notes toggle.** A knob turns notes and plan off. Reads return empty and writes are refused with a clear error.
+- [x] **History policy.** One knob governs access to past actions, contract history, and message history, so a fresh-session agent with notes off has no memory channel. Current obligations stay visible through step 2.
 - [ ] **Four-cell sweep.** Conversation retained or not, by notes retained or not, ten seeds, awake baseline otherwise. Public reputation hidden so memory is the only channel for a counterparty's record.
 
 Done when the spec records the four-cell table and names which cell the earlier results belong to.
@@ -63,9 +63,9 @@ Scenario fixtures with held-out cases, scripted trajectories as evaluator tests,
 Keep this block current at the end of each step.
 
 ```text
-Current step: 3
-Status: Complete
-Branch: unit-18-reports
-Last completed: step 3, the three reports and the experiment-log entry on the first 45 clean runs
-Next action: step 4, notes toggle and history policy, then the four-cell memory sweep at six companies
+Current step: 4
+Status: Knobs done; sweep config ready in configs/sweeps/m6-memory.yaml, not yet run
+Branch: unit-19-memory
+Last completed: step 4 knobs (notes, history) and the four-cell sweep config
+Next action: run the memory sweep when the user says so, then record the four-cell table
 ```

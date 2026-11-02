@@ -24,7 +24,7 @@ Operations orders (`extract`, `produce`, `sell_npc`, `scrap`) can be placed in a
 
 ## Plan and notes
 
-Write a game plan early: what you will do in the early, mid, and late game, what you are doing now, and your thoughts on how it is going. Revise it when the game changes. Unless your session is kept for the whole game, your notes and your plan are the only memory you carry between rounds, so write both for your future self.
+Write a game plan early: what you will do in the early, mid, and late game, what you are doing now, and your thoughts on how it is going. Revise it when the game changes. Unless your session is kept for the whole game, your notes and your plan are the only memory you carry between rounds, so write both for your future self. Some runs turn notes and the plan off; then the tools are absent and your observation is the whole record.
 
 ## Budget
 
