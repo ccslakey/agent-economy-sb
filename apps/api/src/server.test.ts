@@ -212,6 +212,40 @@ describe('agent routes', () => {
     expect(seen.json()).toMatchObject({ round: 3 });
   });
 
+  it('removes notes and plan and limits history to the open turn under the memory knobs', async () => {
+    const run = await startRun(new MemoryStore(), frozenClock(), {
+      ...config,
+      knobs: { ...config.knobs, notes: 'off', history: 'current' },
+    });
+    const write = await api().inject({
+      method: 'PUT',
+      url: '/v1/notes',
+      headers: run.as('c01'),
+      payload: { text: 'remember c05' },
+    });
+    expect(write.statusCode).toBe(400);
+    expect(write.json()).toMatchObject({ code: 'MEMORY_OFF' });
+    const read = await api().inject({ method: 'GET', url: '/v1/notes', headers: run.as('c01') });
+    expect(read.json()).toEqual({ text: '' });
+    const plan = await api().inject({ method: 'GET', url: '/v1/plan', headers: run.as('c01') });
+    expect(plan.json()).toEqual({ plan: null });
+    await api().inject({
+      method: 'POST',
+      url: '/v1/actions',
+      headers: run.as('c01'),
+      payload: { actions: [{ type: 'post_message', text: 'turn one' }] },
+    });
+    for (let i = 0; i < 3; i++) await run.advance();
+    const past = await api().inject({ method: 'GET', url: '/v1/actions', headers: run.as('c01') });
+    expect(past.json()).toEqual({ actions: [] });
+    const messages = await api().inject({
+      method: 'GET',
+      url: '/v1/messages',
+      headers: run.as('c01'),
+    });
+    expect(messages.json()).toEqual({ messages: [] });
+  });
+
   it('records tool calls with the turn and round the API saw, without spending budget', async () => {
     const run = await startRun();
     for (const tool of ['observation', 'docs']) {

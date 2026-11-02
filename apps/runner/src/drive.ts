@@ -48,26 +48,30 @@ type Driver =
  * The user message for a round. The first round of the game reads the docs and writes the plan.
  * The first round of later turns revises the plan. Later rounds act on what arrived.
  */
-export const roundPrompt = (turn: number, round: number, budget: number): string => {
+export const roundPrompt = (turn: number, round: number, budget: number, notes = true): string => {
   const budgetLine = `You have ${budget} tool calls this round, including the ones already used, so plan your calls.`;
   if (turn === 1 && round === 1) {
-    return `This is turn 1, round 1, the start of the game. Read rules.md, contracts.md, and api.md with the docs tool. Every action shape is in api.md; do not guess field names. Then read your observation; it shows your recipes and the reference prices. Write your game plan with write_plan: what you will do in the early game, the mid game, and the late game, what you are doing now, and your thoughts. Then submit your first batch of actions with submit_actions, and write notes for your future self: who you want to trade with, what you have offered, and what to check next round. ${budgetLine}`;
+    return `This is turn 1, round 1, the start of the game. Read rules.md, contracts.md, and api.md with the docs tool. Every action shape is in api.md; do not guess field names. Then read your observation; it shows your recipes and the reference prices. ${notes ? 'Write your game plan with write_plan: what you will do in the early game, the mid game, and the late game, what you are doing now, and your thoughts. Then submit your first batch of actions with submit_actions, and write notes for your future self: who you want to trade with, what you have offered, and what to check next round.' : 'Then submit your first batch of actions with submit_actions. This run has no notes or plan: each round starts from the observation alone.'} ${budgetLine}`;
   }
   if (round === 1) {
-    return `It is turn ${turn}, round 1 of 3. Read your plan, your notes, and your observation. Call write_plan this round: keep the early, mid, and late fields unless the game has changed, and rewrite now and thoughts to say what you are doing this turn and how you feel it is going. Then submit this turn's orders and proposals with submit_actions, and update your notes. ${budgetLine}`;
+    return notes
+      ? `It is turn ${turn}, round 1 of 3. Read your plan, your notes, and your observation. Call write_plan this round: keep the early, mid, and late fields unless the game has changed, and rewrite now and thoughts to say what you are doing this turn and how you feel it is going. Then submit this turn's orders and proposals with submit_actions, and update your notes. ${budgetLine}`
+      : `It is turn ${turn}, round 1 of 3. Read your observation: it lists your obligations, your escrow, and your contracts. Then submit this turn's orders and proposals with submit_actions. ${budgetLine}`;
   }
-  return `It is turn ${turn}, round ${round} of 3. Read your notes and your observation. Answer any proposals or messages that arrived, deliver and pay what you owe, and submit a batch with submit_actions, even an empty one. Update your notes if anything changed. ${budgetLine}`;
+  return notes
+    ? `It is turn ${turn}, round ${round} of 3. Read your notes and your observation. Answer any proposals or messages that arrived, deliver and pay what you owe, and submit a batch with submit_actions, even an empty one. Update your notes if anything changed. ${budgetLine}`
+    : `It is turn ${turn}, round ${round} of 3. Read your observation. Answer any proposals or messages that arrived, deliver and pay what you owe, and submit a batch with submit_actions, even an empty one. ${budgetLine}`;
 };
 
 /** The one prompt a persistent session gets: the whole game, round after round, then the farming answers. */
-export const gamePrompt = (budget: number): string =>
-  `This session plays the whole game. Your context persists from the first round to the last, so you remember everything you see and do; notes are still useful as a summary but they are not your only memory. Start by reading rules.md, contracts.md, and api.md with the docs tool, then read your observation, then write your game plan with write_plan. Every round: submit one batch with submit_actions, even an empty one; on round 1 of each turn revise your plan with write_plan; keep your notes current with counterparties and open obligations. Then call wait_for_round with the turn and round you just acted in. It returns when the next round opens, with your fresh observation, and it costs no tool call. Before you call it, think ahead: what you will do if your proposals are accepted or rejected, what you owe and when it is due. You have ${budget} tool calls per round, not counting wait_for_round. A result of ROUND_CLOSED means the round has moved on; call wait_for_round with the last turn and round you saw. When wait_for_round returns status ended, write your final message: what wasted your time, what was confusing, what was missing, and which companies you thought were run by which model or bot, and why.`;
+export const gamePrompt = (budget: number, notes = true): string =>
+  `This session plays the whole game. Your context persists from the first round to the last, so you remember everything you see and do${notes ? '; notes are still useful as a summary but they are not your only memory' : ''}. Start by reading rules.md, contracts.md, and api.md with the docs tool, then read your observation${notes ? ', then write your game plan with write_plan' : ''}. Every round: submit one batch with submit_actions, even an empty one${notes ? '; on round 1 of each turn revise your plan with write_plan; keep your notes current with counterparties and open obligations' : ''}. Then call wait_for_round with the turn and round you just acted in. It returns when the next round opens, with your fresh observation, and it costs no tool call. Before you call it, think ahead: what you will do if your proposals are accepted or rejected, what you owe and when it is due. You have ${budget} tool calls per round, not counting wait_for_round. A result of ROUND_CLOSED means the round has moved on; call wait_for_round with the last turn and round you saw. When wait_for_round returns status ended, write your final message: what wasted your time, what was confusing, what was missing, and which companies you thought were run by which model or bot, and why.`;
 
 export const RESUME_PROMPT =
   'The game is still running and your session was resumed. Read your observation and continue the loop: act with submit_actions, then wait_for_round. When it returns status ended, write your final message with what wasted your time, what was confusing, what was missing, and which companies you thought were run by which model or bot.';
 
-const FARMING_PROMPT =
-  'The game has ended. First call read_plan and read_notes: your plan, its thoughts field, and your notes are your record of the game, since your session may not remember it. Then answer in prose, briefly: what wasted your time, what was confusing, what was missing, and which companies did you think were run by which model or bot, and why?';
+const farmingPrompt = (notes: boolean): string =>
+  `The game has ended. ${notes ? 'First call read_plan and read_notes: your plan, its thoughts field, and your notes are your record of the game, since your session may not remember it. ' : 'Read your observation and your past actions for the record of the game. '}Then answer in prose, briefly: what wasted your time, what was confusing, what was missing, and which companies did you think were run by which model or bot, and why?`;
 
 /**
  * Create a run from a config and return its id. With per-round or per-turn sessions the runner
@@ -152,6 +156,7 @@ export async function drive(options: DriveOptions): Promise<DriveResult> {
             ...(first.config.knobs.context_persistence === 'persistent'
               ? { AGENT_ECONOMY_PERSISTENT: '1' }
               : {}),
+            ...(first.config.knobs.notes === 'off' ? { AGENT_ECONOMY_NOTES: '0' } : {}),
           },
         },
       },
@@ -207,7 +212,12 @@ export async function drive(options: DriveOptions): Promise<DriveResult> {
         ? sessionIds.get(company)
         : undefined;
     const request = {
-      prompt: roundPrompt(state.turn, round, state.config.limits.round_tool_calls),
+      prompt: roundPrompt(
+        state.turn,
+        round,
+        state.config.limits.round_tool_calls,
+        state.config.knobs.notes !== 'off',
+      ),
       systemPrompt: options.systemPrompt,
       model: driver.model,
       effort: driver.effort,
@@ -274,7 +284,7 @@ export async function drive(options: DriveOptions): Promise<DriveResult> {
     for (const [company, driver] of drivers) {
       if (driver.kind !== 'llm') continue;
       const result = await options.spawner({
-        prompt: FARMING_PROMPT,
+        prompt: farmingPrompt(state.config.knobs.notes !== 'off'),
         systemPrompt: options.systemPrompt,
         model: driver.model,
         effort: driver.effort,
@@ -297,7 +307,9 @@ export async function drive(options: DriveOptions): Promise<DriveResult> {
       const before = await stateNow();
       if (before.phase.kind === 'ended') return;
       const result = await options.spawner({
-        prompt: started ? RESUME_PROMPT : gamePrompt(before.config.limits.round_tool_calls),
+        prompt: started
+          ? RESUME_PROMPT
+          : gamePrompt(before.config.limits.round_tool_calls, before.config.knobs.notes !== 'off'),
         systemPrompt: options.systemPrompt,
         model: driver.model,
         effort: driver.effort,
