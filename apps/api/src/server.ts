@@ -49,7 +49,12 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
   const tokens = new Map<string, { run: string; company: CompanyId }>();
 
   const gameOptions = (runId: RunId): GameOptions => ({
-    persist: (events) => options.store.append(runId, events),
+    persist: async (events) => {
+      await options.store.append(runId, events);
+      // Rounds advance on their own in a persistent run, so the game, not a route, ends the row.
+      if (events.some((e) => e.type === 'run_ended'))
+        await options.store.setRunStatus(runId, 'ended');
+    },
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
 
@@ -87,7 +92,10 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
     if (!request.url.startsWith('/v1/')) return;
     const agent = agentOf(request);
     if (agent === null) return reply.code(401).send({ code: 'UNAUTHORIZED', reason: 'bad token' });
-    if (!request.url.startsWith('/v1/wait')) {
+    // After the game ends an agent may still read its notes, plan, and the final state for its
+    // debrief; only the round budget is closed, so writes keep failing with ROUND_CLOSED.
+    const debrief = agent.game.state.phase.kind === 'ended' && request.method === 'GET';
+    if (!request.url.startsWith('/v1/wait') && !debrief) {
       const spent = agent.game.spend(agent.company.id);
       if (spent !== null) return fail(reply, spent);
     }
@@ -363,7 +371,6 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
     const game = gameOrFail(request.params.id, reply);
     if (game === null) return;
     const events = await game.advance();
-    if (game.state.phase.kind === 'ended') await options.store.setRunStatus(game.id, 'ended');
     return { events, turn: game.state.turn, phase: game.state.phase };
   });
 

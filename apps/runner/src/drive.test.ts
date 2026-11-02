@@ -218,13 +218,12 @@ describe('drive', () => {
       events.filter((e) => e.type === 'extraction_completed' && e.actor === 'c01'),
     ).toHaveLength(2);
     expect(events.some((e) => e.type === 'production_completed' && e.actor === 'c09')).toBe(true);
-    const rounds = traces.filter((t) => t.kind === 'round');
-    expect(rounds).toHaveLength(2);
-    expect(
-      rounds.every((t) => typeof (t.result as { sessionId: unknown }).sessionId === 'string'),
-    ).toBe(true);
+    expect(traces.filter((t) => t.kind === 'round')).toHaveLength(0);
     const farming = traces.filter((t) => t.kind === 'farming');
     expect(farming.map((t) => t.company).sort()).toEqual(['c01', 'c05']);
+    expect(
+      farming.every((t) => typeof (t.result as { sessionId: unknown }).sessionId === 'string'),
+    ).toBe(true);
     const first = farming[0]?.result as { prompt: string } | undefined;
     expect(first?.prompt).toContain('plays the whole game');
   });

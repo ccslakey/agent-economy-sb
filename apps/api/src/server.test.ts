@@ -239,6 +239,18 @@ describe('agent routes', () => {
     expect(again.json()).toEqual({ results: [] });
   });
 
+  it('marks a run ended in the store when the wall clock plays it out', async () => {
+    const run = await startRun(new MemoryStore(), frozenClock(), {
+      ...config,
+      knobs: { ...config.knobs, context_persistence: 'persistent' },
+    });
+    for (let i = 0; i < 6; i++) {
+      run.clock.fire();
+      await new Promise((r) => setImmediate(r));
+    }
+    expect((await run.store.listRuns())[0]).toMatchObject({ status: 'ended' });
+  });
+
   it('runs the operations step after round three and ends on the fixed last turn', async () => {
     const run = await startRun();
     await api().inject({
@@ -281,10 +293,17 @@ describe('agent routes', () => {
       population: { llm: 0, bot: 2, models: [] },
       cost: { sessions: 0, tokens_in: 0, tokens_out: 0, cost_usd: 0 },
     });
-    const closed = await api().inject({
+    const debrief = await api().inject({
       method: 'GET',
-      url: '/v1/observation',
+      url: '/v1/notes',
       headers: run.as('c05'),
+    });
+    expect(debrief.statusCode).toBe(200);
+    const closed = await api().inject({
+      method: 'POST',
+      url: '/v1/actions',
+      headers: run.as('c05'),
+      payload: { actions: [] },
     });
     expect(closed.statusCode).toBe(409);
     await api().close();

@@ -313,12 +313,19 @@ export async function drive(options: DriveOptions): Promise<DriveResult> {
       }
       started = true;
       const after = await stateNow();
-      await recordTrace(company, after.turn, null, 'round', driver.model, result);
+      // A whole-game session is one trace. Its final message is the farming answer when the
+      // game ended, so it is recorded under that kind once rather than as a round and again as farming.
+      const ended = result.ok && after.phase.kind === 'ended';
+      await recordTrace(
+        company,
+        after.turn,
+        null,
+        ended ? 'farming' : 'round',
+        driver.model,
+        result,
+      );
       if (result.ok) {
-        if (after.phase.kind === 'ended') {
-          await recordTrace(company, after.turn, null, 'farming', driver.model, result);
-          return;
-        }
+        if (ended) return;
         log(`${company}: session returned at turn ${after.turn} before the end, resuming it`);
         continue;
       }
