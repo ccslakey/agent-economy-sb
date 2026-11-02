@@ -1,6 +1,6 @@
 # Agent Economy Sandbox: Spec v0.2
 
-Oct 31, 2026 · @connor
+Oct 31, 2026, trimmed Nov 2, 2026 · @connor. Run reports live in `docs/experiments.md`.
 
 ## Overview
 
@@ -70,7 +70,7 @@ Each turn has three negotiation rounds followed by one operations step. Every ag
 
 ## Economy parameters
 
-These are starting values, not a balanced economy. They live in the run config and get tuned with scripted bots (milestone M3) before any LLM money is spent.
+These are starting values, not a balanced economy. They live in the run config and were tuned with scripted bots before any LLM run.
 
 **NPC demand.** Each final good clears at one price per turn from a linear inverse demand curve, where Q is the total quantity all sellers offered that turn and every seller receives P. This is Cournot competition: flooding the market lowers everyone's price, which is what makes collusion tempting.
 
@@ -89,7 +89,7 @@ The intercept a\_t moves each turn by a small random factor (default ±5%) and b
 | Storage cost        | 1 per unit per turn                                            | All goods                                                                              |
 | Furniture demand    | a = 640, b = 30                                                | Per turn                                                                               |
 | Tool demand         | a = 240, b = 10                                                | Per turn                                                                               |
-| Reference prices    | Ore 15, timber 20, ingot 55, plank 45, tool 160, furniture 400 | Base for scrap, penalties, and the end inventory value. Tuned in M3 so every role clears about 150 per turn at capacity before upkeep |
+| Reference prices    | Ore 15, timber 20, ingot 55, plank 45, tool 160, furniture 400 | Base for scrap, penalties, and the end inventory value. Tuned so every role clears about 150 per turn at capacity before upkeep |
 | Scrap price         | 30% of reference                                               | Any good, any quantity                                                                 |
 | End inventory value | 50% of reference                                               | Valuation of inventory in the final score, tuned in M3                                 |
 | Overdraft limit     | −200                                                           | Below this the company goes bankrupt                                                   |
@@ -118,7 +118,6 @@ All trade between companies goes through bilateral contracts that the engine rec
 - Proposer and counterparty
 - Goods obligations: who delivers what good, in what quantity, to whom, and by which turn
 - Cash obligations: who pays how much to whom, and by which turn
-- Escrow flag
 - Free-text terms, which the engine stores but never interprets
 
 **Lifecycle.** A proposal is accepted, rejected, withdrawn by the proposer, or expires at the end of the next turn. Once accepted it is active, and each party puts in what it owes with a `deliver` or `pay` action. Deposits leave the depositor at once and are held by the engine. Partial deposits are allowed.
@@ -297,38 +296,26 @@ Projections are rebuildable from `events` at any time and exist only to make the
 - World: `grove_regrew`, `shock_applied`, `company_bankrupt`, `license_bought`, `license_auctioned`, `company_rebranded`
 - Meta: `agent_trace_recorded` (points to `agent_traces`), `agent_replaced_by_bot`, `bug_report_filed`
 
-Every event id is stable and citable. The narrative summaries in the dashboard depend on that.
+Every event id is stable and citable. The notable moments in the dashboard depend on that.
 
 ## Admin dashboard
 
-A read-only web app over the events and projections, for a non-player admin. Every view has a turn scrubber, so any screen can show the world as it stood at turn N of any run.
+A read-only web app for a non-player admin. It fetches a run's event log once and folds it in the browser, so every view has a turn scrubber that shows the world as it stood at turn N. Nothing is precomputed on the server except the run metrics.
 
-**Views**
+**Pages**
 
-| View               | Shows                                                                                           | Main question it answers                                              |
-| ------------------ | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| Run list           | Every run with config summary, status, length, total cost                                       | Which runs exist and how do their knobs differ?                       |
-| World overview     | Turn, money supply, output per good, NPC prices over time, grove stocks                         | Is the economy healthy, and what happened when?                       |
-| Leaderboard        | Net worth per company over time, labeled by model and role                                      | Who is winning, and since when?                                       |
-| Trade network      | Companies as nodes, contracts as edges weighted by value, colored completed, late, or defaulted | Who trades with whom, who gets cut off, are there cliques?            |
-| Contract ledger    | Filterable table of every contract with terms and status, linked to the messages around it      | What deals were made and which were honored?                          |
-| Message explorer   | Public channel and all DMs, searchable, threaded by participants                                | What did they say to each other, and in private?                      |
-| Company drill-down | Timeline of actions, cash, inventory, reputation, notes file, and per-round reasoning traces    | Why did this agent do what it did?                                    |
-| Run comparison     | Metrics side by side across runs, grouped by knob setting and paired by seed                    | What changed when a knob changed?                                     |
-| Cost panel         | Tokens, nominal cost, sessions, and latency per agent and per model                             | What did this run consume, and which model gave the most per session? |
+| Page               | Shows                                                                                                                                              | Main question it answers                                   |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Overview           | Run settings, KPI tiles, net worth over time, default rate by driver, leaderboard, NPC prices, world charts, notable moments, cost panel             | What happened in this run, and when?                       |
+| Trade network      | Companies as nodes in chain order, accepted contracts as edges colored completed, defaulted, or open, DMs as dashed edges, with a selected-company aside and the contract ledger | Who trades with whom, who gets cut off, are there cliques? |
+| Companies          | Per company: KPI tiles, plan and notes, round summaries from the traces, cash and score chart, action timeline, and the message explorer            | Why did this agent do what it did?                         |
+| Compare runs       | A heatmap of run metrics across ended runs, dot plots grouped by experiment, and the metrics table                                                 | What changed when a knob changed?                          |
 
-**Metrics (computed, never shown to agents)**
+**Run metrics** are computed by the engine from the final state (`packages/engine/src/metrics.ts`), served at `/admin/runs/:id/metrics`, and never shown to agents: contract counts, default rate overall and by role, cash destroyed by penalties, completed trade value, welfare (sum of net worth gains), Gini of final net worth, message counts and DM share, bot handoffs, price dispersion per intermediate good, and NPC sales per final good.
 
-- Default rate by model, by role, and by turn
-- Penalty volume: cash destroyed by penalties per turn, and how trade volume responds to it
-- Total welfare: sum of net worth gains across all companies
-- Inequality: Gini of final net worth
-- Collusion signal: quantity sold to the NPC by same-role sellers versus the Cournot benchmark for that turn
-- Price dispersion for each intermediate good across contracts in a turn
-- Message volume and DM share per company
+**Notable moments** are detected from the event log by rules, not by a model (`packages/engine/src/moments.ts`): default waves, the worst defaulter, bankruptcies, shocks and the price reaction, the largest price swing, lead changes, stalled trade, bot handoffs, license purchases and auctions, and the end of the run. Each moment carries the event ids it rests on, and the dashboard renders them as chips that describe the cited event, so a claim is checkable rather than just plausible.
 
-**Narrative summaries.** An LLM reads a run's events and writes a per-company storyline. Every claim must cite event ids, and the dashboard checks each cited id exists and has the claimed type before rendering. Each sentence links straight to its evidence, so a summary is checkable rather than just plausible.
-
+**Reasoning traces.** The runner stores each session's end-of-round summary and token usage, not its tool calls or hidden reasoning, so the trace panel shows what the agent said it did each round beside the plan it kept.
 ## Agent runner and harness
 
 The runner is a separate process that plays every company through the public API, exactly as an outside agent would. The engine never calls a model, so anyone can later point their own agent at a run.
@@ -341,7 +328,7 @@ The runner is a separate process that plays every company through the public API
 2. The session fetches its observation, docs, and notes through the tools and works until it submits its batch or the API returns `ROUND_CLOSED`.
 3. Read the result with `--output-format json`. Write the transcript, tokens, nominal cost, and latency to `agent_traces` and record `agent_trace_recorded`.
 
-Agents in a round run concurrently, up to the max concurrent sessions in `limits`. With context persistence `per_round`, every round is a fresh session and the notes file is the agent's only memory across rounds, which also makes its memory inspectable from the dashboard. With `per_turn`, the runner passes `--resume` across the three rounds of a turn and starts fresh each turn. With `persistent`, one session per company plays the whole game: after it acts it calls `wait_for_round`, a free tool that returns when the next round opens with a fresh observation, so the agent keeps its full context, Calling `wait_for_round` while the round it names is still open counts as passing that round, so a company that sits out does not hold the others until the wall clock. can think ahead between rounds, and answers the farming questions as its final message. The API advances rounds itself in that mode, the session is pinned to an id so a crash or a quota pause resumes it, and the first test of the mode is the `awake` sweep variant. Smoke-tested on Nov 1, 2026: two Sonnet sessions at low effort played a two-turn game end to end beside a bot, with the API advancing every round on its own, and their final answers drew on the whole game, such as the smelter refusing an offer whose cash was due after the last turn.
+Agents in a round run concurrently, up to the max concurrent sessions in `limits`. With context persistence `per_round`, every round is a fresh session and the notes file is the agent's only memory across rounds, which also makes its memory inspectable from the dashboard. With `per_turn`, the runner passes `--resume` across the three rounds of a turn and starts fresh each turn. With `persistent`, one session per company plays the whole game: after it acts it calls `wait_for_round`, a free tool that returns when the next round opens with a fresh observation, so the agent keeps its full context, can think ahead between rounds, and answers the farming questions as its final message. Calling `wait_for_round` while the round it names is still open counts as passing that round, so a company that sits out does not hold the others until the wall clock. The API advances rounds itself in that mode, the session is pinned to an id so a crash or a quota pause resumes it, and the `awake` sweep variant was its first test.
 
 **Quota pauses.** When a session fails on a rate limit, the runner records `run_paused`, stops the round clock for every agent, and retries when the window opens, then records `run_resumed`. A paused round is not a missed deadline. If a session keeps failing for any other reason, the runner hands the company to the scripted honest-trader bot for the rest of the run and records `agent_replaced_by_bot`, so the chain stays intact and the dashboard flags the run as partly scripted.
 
@@ -356,95 +343,53 @@ Agents in a round run concurrently, up to the max concurrent sessions in `limits
 **The farming loop.** After each run, every LLM agent gets one extra call: what wasted your time, what was confusing, what was missing, and which companies did you think were which model, and why? Treat the answers as noisy data. Most will ask for the game to play itself, but real friction (for example, repeatedly mis-specified contracts) points to the next porcelain to add.
 
 **Porcelain candidates for later**, added only when runs show the need: standing orders (produce at capacity, sell X per turn), contract templates, a `fulfill_all_due` action.
+## Tech stack and repo layout
 
-## Tech stack, repo layout, and milestones
-
-TypeScript end to end, with Postgres for storage, so the action, event, and observation types are defined once and shared by the engine, API, runner, and dashboard.
-
-&#91;embedded content: system architecture · 5 components\]
-
-The API is the only boundary agents cross, and the engine never touches the database directly, so it stays pure and testable.
-
-**Stack**
+TypeScript end to end, with Postgres for storage, so the action, event, and observation types are defined once and shared by the engine, API, runner, and dashboard. The API is the only boundary agents cross, and the engine never touches the database directly, so it stays pure and testable.
 
 | Layer     | Choice                                                                        | Why                                                             |
 | --------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------- |
 | Schemas   | zod                                                                           | One definition gives runtime validation and TS types everywhere |
 | Engine    | Plain TS package, no dependencies on IO                                       | Pure and fast to unit test                                      |
 | API       | Fastify                                                                       | Simple, quick, schema-friendly                                  |
-| Database  | Postgres 16 via Docker Compose, Kysely for queries                            | Typed SQL without an ORM hiding the event log                   |
+| Database  | Postgres via Kysely                                                           | Typed SQL without an ORM hiding the event log                   |
 | Runner    | Node process that spawns headless CLI sessions and serves the game MCP server | Same types as the API                                           |
-| Dashboard | React + Vite, a charting library, Cytoscape.js for the trade network          | Fast local dev                                                  |
-
-**Repo layout (pnpm monorepo)**
+| Dashboard | React + Vite, inline SVG charts, no chart library                             | Fast local dev, and every chart folds the same event log        |
 
 ```
 agent-economy/
   packages/
     schema/      zod types: actions, events, observation, config
-    engine/      pure rules: state + actions + rng -> events
+    engine/      pure rules: state + actions + rng -> events, metrics, moments
   apps/
     api/         Fastify server, round clock, projections
-    runner/      CLI adapters, game MCP server, scripted bots, trace capture
+    runner/      CLI adapters, game MCP server, scripted bots, sweeps, trace capture
     dashboard/   React admin UI
   docs/agent/    markdown served at /v1/docs
-  configs/       run configs (yaml)
-  docker-compose.yml
+  docs/experiments.md   run reports
+  configs/       run configs and sweep files (yaml)
 ```
 
-**Milestones**
-
-1. **M0, engine core.** The schema package first, then goods, recipes, groves, NPC market, upkeep, bankruptcy, shocks, and the random horizon. Unit tests, plus a replay test that rebuilds state from events and matches.
-2. **M1, trade layer.** Contracts with per-obligation due turns, escrow, transfers, messages, the reputation ledger including cured defaults, license purchase, and the license auction.
-3. **M2, API, agent docs, and MCP server.** The notes cap and the GET on past actions land here. Play a company by hand in an interactive Claude Code session with the MCP server attached, to feel the friction in the tool surface agents will use. Keep curl for debugging the API.
-4. **M3, scripted bots and tuning.** A determinism test first: the same config, seed, and bot roster must produce a byte-identical event log twice. Then run hundreds of bot-only games and tune until no single bot strategy dominates and cooperation beats isolation on average. Acceptance criteria for the cash parameters: a passive bot goes bankrupt before the minimum game length, the honest trader survives in nearly every run, and the defector is bankrupt or without counterparties by about turn 20 in a meaningful share of runs.
-5. **M3.5, run inspector.** Plain read-only tables over the projections with a turn filter: contract ledger, message explorer, and company timeline. These three views are what makes the M4 output readable, so they come before it.
-6. **M4, first LLM run.** The Claude Code adapter, quota pauses, the bot handoff, and trace capture. Then one model, six companies, a 15-turn fixed game. Run the farming loop afterward. Measure minutes per round with concurrent sessions and how much of a quota window one run consumes. Those two numbers set how many games fit in a night. Done on Nov 1, 2026, see the M4 result under Decisions.
-7. **M5, dashboard v1.** Run list, world overview, leaderboard, and charted versions of the inspector views. Done on Nov 1, 2026 in units 11 and 12, plus a cost panel. The trade network, run comparison, and narrative summaries from the dashboard table wait for M6.
-8. **M6, experiments.** Mixed models, knob sweeps, trade network, run comparison, and cited narrative summaries, which also run through `claude -p`. The first sweeps are queued in `configs/sweeps/m6-knobs.yaml`: enforcement `on` against `off`, the needs board `on` against `off`, and a twelve-company roster with two sellers per role, each paired by seed against the penalty-regime baseline. The twelve-company variant is where the collusion signal becomes measurable. Later variants added turn income and the awake (`persistent`) session mode; the Decisions section records each sweep's result.
-
-**Delivery units**
-
-Each unit is one pull request of about 500 lines or less and ends in a check that a reviewer can rerun. A unit does not start until the one before it is green.
-
-1. Repo scaffold, the schema package with config, state, action, and event types, and a test runner in CI.
-2. Engine state fold and the operations step for extraction, production, NPC market, scrap, upkeep, and storage, with unit tests against literal expected values.
-3. Groves, shocks, bankruptcy, the random horizon, and the replay test that rebuilds state from events.
-4. Contracts with per-obligation due turns, the lifecycle, and the reputation ledger including cured.
-5. Escrow, transfers, messages, license purchase, and the license auction.
-6. Postgres, the events table, the Fastify endpoints, the round clock, and the agent docs folder.
-7. The MCP server, then the M2 hand-play session.
-8. Scripted bots and the determinism test, then the tuning loop as many small commits against the M3 criteria.
-9. The three read-only inspector views.
-10. The Claude Code adapter, quota pauses, bot handoff, and trace capture, then the M4 run.
-11. Dashboard v1, first half: the run list with knob, population, and cost columns, the world overview, and the leaderboard, drawn as inline SVG line charts over the event fold with the turn scrubber as a marker.
-12. Dashboard v1, second half: charted contract and message views, a cash and score chart in the company drill-down, and the cost panel.
-13. Sweeps: the run metrics as an engine function and an admin route, a sweep file that expands to runs paired by seed, a sweep command that plays them a few at a time and skips runs already ended, and the comparison table with paired differences against the first variant. The collusion signal waits for a roster with two sellers per role.
+Work lands in pull requests of about 500 lines or less, each ending in a check a reviewer can rerun.
 
 ## Decisions
 
-Resolved on Oct 31, 2026. Each entry names the v0.1 question and where the answer lives.
+Each entry states a rule and, where a run decided it, points at the report in `docs/experiments.md`.
 
-- **Admin can read DMs.** Agents are told, default `told`. A model sending messages through an API it does not control assumes logging anyway, so `not_told` buys no privacy and leaves the agent's belief uncontrolled. Sweep `not_told` as an M6 knob.
+- **Admin can read DMs.** Agents are told, default `told`. A model sending messages through an API it does not control assumes logging anyway, so `not_told` buys no privacy and leaves the agent's belief uncontrolled. `not_told` is a knob to sweep.
 - **Model identity.** Default `hidden`, so trust forms from game actions rather than priors about a model. Agents are told competitors may be any model of comparable ability or a scripted bot. Names never hint at the model. The farming loop asks agents which companies they thought were which model.
-- **Memory.** Notes only. Agents never read their own traces. Three additions make notes enough: a notes size cap in `limits`, a GET on `/v1/actions` for the agent's own past batches and results, and the context persistence knob with `per_round` as default.
-- **Loans and credit.** No loan feature. Due turns moved from the contract to each obligation, which is a one-field change in M1 and lets a contract express a loan, collateral through escrow, and a repayment schedule. Credit behavior is an M6 measurement.
-- **Overdraft and bankruptcy.** At 1,000 cash and a −500 limit, a company that never traded survived to turn 37, past the minimum game, so bankruptcy never fired and trust failures cost score, never survival. Starting cash is now 600 and the limit −200, with the M3 acceptance criteria to tune from. A bankrupt company's license goes to auction at a discounted reserve so one role cannot die out.
-- **Budget.** Agents run on a subscription through headless Claude Code, not metered API keys. Dollar caps are gone. The runner pauses on quota and M4 measures sessions per run and minutes per round.
-- **End-of-game inventory.** Scored at 50% of reference price, a tunable economy parameter, so holding unsold output is worth less than selling it and more than scrapping it.
-- **Late cures.** A cured default is its own ledger entry, separate from an open default, so it softens the mark without erasing it. The status is `cured`, replacing `completed_late`, because every late completion passes through a default first.
-- **Reference prices.** Tuned in M3 against scripted bots. At the v0.1 prices the honest mill completed dozens of contracts and still went bankrupt in every seed on a 10 per plank margin. Ingot 55, plank 45, and tool 160 give miner, logger, smelter, mill, and toolmaker about 150 per turn at capacity before upkeep. Over eight seeds with a defector, a greedy producer, a passive company, and a random bot in the roster, honest traders survived 62 of 64 times and scored four times the isolated producer.
-- **Porcelain after M4.** The observation now carries the company's recipes, the reference prices, its net worth, and its own sales from the last turn. Agents keep a structured plan with early, mid, late, now, and thoughts fields, revised over the game with every revision kept, which is the trajectory of their strategy and mood. The round prompt reads the docs and writes the plan on turn 1 and revises the plan on the first round of every later turn. The end-of-run report surfaces bug reports, plans, thoughts, notes, and farming answers.
-- **M4 result.** Six Sonnet companies at low effort, one per role, 15 fixed turns, six concurrent sessions. The 45 rounds took 5 minutes 45 seconds, about 6 seconds per round, with a mean session of 4.8 seconds. 276 sessions read 5.6M input tokens, almost all cache hits, and wrote 90k output tokens, for a nominal API cost of $4.59. Quota consumption on the subscription is not readable from the runner. The game was thin: 13 contracts proposed, 5 accepted, 3 completed, 2 defaulted, the mill bankrupt, three others near zero cash, and only the two roles with an NPC outlet in profit. The farming answers agree on the cause: notes were one line, so each fresh session had no plan and no record, agents did not re-read the docs, and the observation gave no price or outlet for intermediate goods and no per-turn profit. First porcelain to add, in order: the company's recipe and the reference prices in the observation, last turn's own sales and net worth in the observation, and a round prompt that tells the agent to read the docs on turn 1 and to keep its plan and counterparties in its notes. Then rerun at medium effort before comparing models.
-- **Observation after the second M4.** The observation now itemizes last turn's upkeep and storage, lists the scrap price per unit for every good, and states the horizon as a known last turn or a minimum plus hazard. A `needs_board` knob, off by default, adds every company's input shortfall and output stock, because who-wants-what is an information-structure choice to experiment with rather than a default.
-- **M4 at medium effort.** Same six Sonnet companies and seed family, 15 fixed turns, with the plan prompts, the observation porcelain, and auto-advance off. The 45 rounds took 10 minutes 37 seconds, about 14 seconds per round, mean session 7.4 seconds; 261 sessions read 6.9M input tokens and wrote 150k output tokens for a nominal $5.96. The game came alive: 37 contracts proposed against 13 at low effort, 18 accepted, 9 completed, 9 defaulted, 7 escrowed, 25 messages, and every agent revised its plan every turn. Then it stalled. The toolmaker defaulted six times on ingot deals, the smelter stockpiled 24 ingots with no buyer and went bankrupt, the mill went under, and the miner and logger sat on full stock with nobody buying. The thoughts fields show the stall turn by turn: the toolmaker moved from "ingot supply is the bottleneck" to "only trust escrow" to "net worth equals cash, not risking it" and idled from turn 10. The farming answers agree on three gaps: no way to see who needs what, no itemized upkeep and storage so cash "drifted" unexplained, and no sign that scrap takes any good, so intermediate producers believed their output had no outlet. Next porcelain, in order: last turn's charges in the observation, the scrap outlet and price in the observation, the last turn when the horizon is fixed, and a knob for a public needs board, since who-wants-what is an information-structure choice and not a bug.
-- **M4, third run.** Medium effort again, needs board off, with charges, scrap prices, and the horizon in the observation. 45 rounds in 8 minutes 5 seconds, mean session 6.6 seconds, 276 sessions, 7.1M input and 153k output tokens, nominal $6.26. The information fixes did what they were for: eight scrap sales where there had been none, and no bankruptcies where there had been two. Trade did not recover: 26 proposals, 16 accepted, 5 completed, 11 defaulted, and not one escrowed contract although escrow was available. The log shows why. The toolmaker took two ingot deliveries from the smelter worth 750 and never paid, took 330 from the furniture maker and sold the promised tools to the NPC instead, then found that its six defaults, the worst record on the board, cut it off from supply, and sat on its cash to the end. It finished first with 2475. The smelter that delivered twice unpaid finished last at negative cash. In a short fixed game with unenforced contracts, the unreliable node won and the chain around it died. The agents did not choose this as a strategy; the toolmaker's own thoughts say it sold tools it had promised "so I may default" and then "bad reputation blocks supply". Two implications. The farming answers still describe one-line notes, so the plan is the richer memory and the notes prompt needs to ask for counterparties and open obligations by name. And the next step was the enforcement knob, which became the penalty regime below rather than a sweep of the old escrow modes.
-- **Penalty regime.** Every contract is held by the engine and settles at the first missed due turn. A party that performed gets its deposits back; a party that failed loses them and pays `default_penalty_fraction` of its side's value, 75% with enforcement `on` and half that with it `off`, destroyed rather than paid to anyone. The escrow flag and fee, the `enforced` mode, and the cured state are gone. Credit through contracts is gone with them, since held cash never pays out until the other side performs. Decided after the third M4 run, where the unreliable toolmaker won by taking deliveries and never paying.
-- **M4 under the penalty regime.** Same six Sonnet companies at medium effort, enforcement on. 45 rounds in 9 minutes 23 seconds, mean session 7.2 seconds, nominal $5.92. Trade: 26 proposals, 17 accepted, 9 completed against 5 in the previous run, 8 defaulted, 9 penalties charged for 1,700 cash destroyed, 7 refunds to parties that had performed. The toolmaker that welched its way to first place last time completed 4 contracts, defaulted on none, and won on merit with 1,935; its thoughts track the smelter's reliability turn by turn and never mention preserving cash until the final turns. The defaults moved to the furniture maker, which promised what it could not put in four times and paid 955 in penalties, and to the mill, which overpromised planks on turn 4, paid 652, and went bankrupt on turn 10. So the regime does what it was for: performing is safe, failing is expensive, and the chain's unreliable node is now whoever overcommits rather than whoever takes deliveries. The farming answers repeat one complaint from every run: notes are a single line, so each fresh session cannot explain its own record. The plan's thoughts field carries the history the notes lack, and the farming prompt should read the plan before asking.
-- **M6, first sweep.** Twelve Sonnet runs at medium effort, 15 fixed turns, seeds 104 to 106, on Nov 1, 2026: the penalty-regime baseline, enforcement `off`, the needs board `on`, and a twelve-company roster with two sellers per role. 3,851 sessions, a nominal $92, about 7 seconds per session; two runs at a time took about 12 minutes per pair of six-company runs. The 5-hour subscription limit hit during the twelve-company runs and exposed two runner bugs, fixed since: the limit's wording was not read as a quota, so companies were handed to bots instead of the run pausing, and a bot then crashed on a closed round. Metrics now count bot handoffs and the sweep replays any run that has one. Means over three seeds, baseline first: completed 12, 6.3, 6.3, 14.3; defaulted 13.3, 13.3, 13, 25.7; default rate 0.55, 0.68, 0.69, 0.64; penalties destroyed 2,872, 1,555, 3,059, 5,043; trade value 5,567, 2,982, 3,060, 5,051; welfare −1,419, −2,201, −2,785, −5,594. Read with the pairs in view: baseline seed 104 is an outlier with 21 completions and the only positive welfare in the sweep, and the enforcement-off gap comes almost entirely from that pair, since on seeds 105 and 106 enforcement off matched the baseline's completions and ended with better welfare because half the penalty destroys half the cash. The needs board is the consistent signal, fewer completions than baseline in all three pairs, with one run down to a single completion and three bankruptcies, so showing who needs what did not help and may have invited overpromising. Twelve companies doubled proposals and defaults together: trade value matched the baseline, penalties and bankruptcies did not, and public messages went from near zero to nine per game. Across all twelve runs welfare was negative in eleven, penalties destroyed roughly match or exceed completed trade value, and the mill and the furniture maker, the roles that need two inputs, default at 0.4 to 0.9 in nearly every run. The next sweep should add seeds to the baseline and enforcement pair before trusting either reading, and test a lower `default_penalty_fraction`, since 0.75 appears to destroy more than it protects.
-- **M6, penalty fractions.** Six more runs on Nov 1, 2026, `default_penalty_fraction` 0.5 and 0.25 against the 0.75 baseline, same roster and seeds, with the subscription limit pausing and resuming the last two runs cleanly. Means over three seeds, 0.75 then 0.5 then 0.25: completed 12, 8.3, 8; defaulted 13.3, 10.7, 12.7; default rate 0.55, 0.55, 0.59; penalties destroyed 2,872, 1,920, 1,026; welfare −1,419, −2,605, −1,938; bankruptcies 1.7, 1.7, 0.3. Set the outlier aside (baseline seed 104, 21 completions, the only positive welfare in the sweep) and the picture is plain: the fraction does not move behavior. Completions sit at 6 to 12 and default rates at 0.4 to 0.7 under every fraction, so agents overpromise as much at 0.25 as at 0.75. What the fraction does move is how much cash the regime burns, and with it welfare and survival: at 0.25 two of three games ended with no bankruptcy and welfare on the non-outlier seeds improved from about −2,800 to −1,900. The deterrent is not doing the deterring; the default rate is a planning failure that a bigger fine does not fix. So the default should drop toward 0.25, and the next lever is the planning side: the agents' own farming answers across these 18 runs, and whether the `awake` variant, which keeps a session's context across the whole game, defaults less.
-- **M6, turn income and awake sessions.** Six more runs on Nov 1, 2026, same roster and seeds: `turn_income` 20 and context persistence `persistent`, where one session per company plays all 15 turns and waits between rounds. Means over three seeds, baseline then income then awake: completed 12, 11.7, 54.3; defaulted 13.3, 8, 5.3; default rate 0.55, 0.47, 0.09; penalties destroyed 2,872, 1,873, 1,201; trade value 5,567, 4,994, 28,678; welfare −1,419, 118, 12,063; Gini 0.62, 0.49, 0.33; bankruptcies 1.7, 1.3, 0. Turn income moves survival and welfare about as much as the 300 a company receives over the game, and nothing else. Keeping the agents awake changes the game. Every awake seed beat every fresh-session seed on every measure: completions 45 to 60 against 6 to 23, default rates 0.06 to 0.12 against 0.23 to 0.70, no bankruptcies, and five times the trade value, most of it a routine where the toolmaker and furniture maker bought inputs every turn from the same suppliers and sold to the NPC market. The awake agents describe a routine they kept with the same counterparties turn after turn. The fresh-session agents' debriefs say their notes were a line or two, that reading notes and the observation used most of the eight calls, and that they could not recall earlier turns. Those debriefs also exposed a third defect: after the game ended every read returned `ROUND_CLOSED`, so a fresh-session agent answered the farming questions from its last round alone. Reads are now free once the game has ended. Awake runs are also far cheaper to play: six sessions of 2 to 5 million mostly cached input tokens and about 90,000 output tokens per run against roughly 240 sessions, 6 to 8 million input tokens and 150,000 output tokens, and they finish in four minutes because a round closes within seconds of the last action. Two more defects surfaced on the way and are fixed: a per-round agent could see `wait_for_round` and hold a round to the wall clock, and a persistent company that sat a round out held it the same way until waiting for the next round was made to count as passing. The persistent mode is now the recommended default for experiments that are about behavior rather than about memory, and the fresh-session default rate should be read as a memory failure before it is read as a trust failure.
-- **Buildout order.** The schema package comes first because every later unit imports it. The three inspector views come before the first LLM run because reading trajectories is the bottleneck. M2 hand-plays through the MCP server rather than curl. M3 opens with a determinism test. Work lands in ten units of about 500 lines, each ending in a rerunnable check.
+- **Memory.** Notes and the plan only. Agents never read their own traces. The notes have a size cap in `limits`, and a GET on `/v1/actions` returns the agent's own past batches and results.
+- **Loans and credit.** No loan feature, and under the penalty regime no credit through contracts either, since held cash never pays out until the other side performs.
+- **Overdraft and bankruptcy.** Starting cash 600 and an overdraft limit of −200, so a company that never trades is bankrupt before the minimum game length. A bankrupt company's license goes to auction at a discounted reserve so one role cannot die out.
+- **Budget.** Agents run on a subscription through headless Claude Code, not metered API keys. There are no dollar caps. The runner pauses on quota.
+- **End-of-game inventory.** Scored at 50% of reference price, so holding unsold output is worth less than selling it and more than scrapping it.
+- **Reference prices.** Ingot 55, plank 45, and tool 160 give every role about 150 per turn at capacity before upkeep. Tuned against scripted bots: at those prices honest traders survived 62 of 64 runs and scored four times the isolated producer.
+- **Observation porcelain.** The observation carries the company's recipes, the reference and scrap prices, its net worth, last turn's sales, itemized upkeep and storage, and the horizon as a known last turn or a minimum plus hazard. Agents keep a structured plan with early, mid, late, now, and thoughts fields, revised on the first round of every turn, with every revision kept. Each item was added after a run showed agents acting without it (the first three M4 runs in the log).
+- **Needs board.** A knob, off by default, that lists every company's input shortfall and output stock. Who-wants-what is an information-structure choice to experiment with, not a default. The first sweep found it reduced completions.
+- **Penalty regime.** Every contract is held by the engine and settles at the first missed due turn. A party that performed gets its deposits back; a party that failed loses them and pays `default_penalty_fraction` of its side's value, destroyed rather than paid to anyone. The escrow flag and fee, the `enforced` mode, and the cured state are gone. Decided after the third M4 run, where an unreliable toolmaker won by taking deliveries and never paying.
+- **Penalty fraction.** The fraction does not move the default rate; it only changes how much cash the regime burns. The default should drop toward 0.25, and overpromising is a planning failure to fix on the agent side (the penalty-fractions sweep).
+- **Turn income.** A knob, default 0. At 20 it moves survival and welfare by about the cash it adds and nothing else.
+- **Persistent sessions.** One session per company that plays the whole game and waits between rounds is the recommended default for experiments about behavior rather than memory. Awake runs beat fresh-session runs on every measure and cost a fraction of the sessions. A fresh-session default rate should be read as a memory failure before it is read as a trust failure (the awake sweep).
 - **Demand across runs.** Demand parameters stay fixed and the seed is the replicate. Experiments pair runs by seed across knob settings and start with three to five seeds per setting. A different demand curve is a named profile knob, never an edit to the economy table.
 
 ## Open questions
