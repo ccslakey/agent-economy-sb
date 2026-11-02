@@ -1,12 +1,15 @@
 import {
   type Company,
   type CompanyId,
+  type Contract,
   type ContractId,
   FINAL_GOODS,
   type FinalGood,
   GOODS,
   type Good,
+  type Holding,
   type Message,
+  type ObligationView,
   type Observation,
   type Reputation,
   ROLES,
@@ -30,6 +33,8 @@ export function observe(
   company: Company,
   news: RoundNews,
   toolCallsLeft: number,
+  /** The API remembers an empty batch, which the engine records nothing for. */
+  emptyBatch = false,
 ): Observation {
   if (state.phase.kind !== 'round')
     throw new Error(`no round is open in phase ${state.phase.kind}`);
@@ -67,6 +72,18 @@ export function observe(
   const mine = Object.values(state.contracts)
     .filter((k) => k.proposer === company.id || k.counterparty === company.id)
     .sort((a, b) => (a.id < b.id ? -1 : 1));
+  const obligations = obligationsOf(state, company, mine);
+  const sum = (rows: readonly ObligationView[], field: 'remaining' | 'deposited'): Holding => {
+    const out: Holding = { cash: 0, goods: {} };
+    for (const row of rows) {
+      if (row.kind === 'cash') out.cash += row[field];
+      else if (row.good !== undefined && row[field] > 0)
+        out.goods[row.good] = (out.goods[row.good] ?? 0) + row[field];
+    }
+    return out;
+  };
+  const owe = obligations.filter((o) => o.direction === 'you_owe');
+  const owed = obligations.filter((o) => o.direction === 'owed_to_you');
 
   return {
     turn: state.turn,
@@ -95,6 +112,9 @@ export function observe(
               income: company.charges.income,
             }
           : { upkeep: 0, storage: 0, storage_units: 0, income: 0 },
+      in_escrow: sum(owe, 'deposited'),
+      still_owed_by_you: sum(owe, 'remaining'),
+      still_owed_to_you: sum(owed, 'remaining'),
     },
     scrap_per_unit: scrapPerUnit(state),
     needs: knobs.needs_board === 'on' ? needsBoard(state, solvent) : null,
@@ -111,6 +131,7 @@ export function observe(
     market: { last_turn: lastTurn },
     contracts: {
       active: mine.filter((k) => k.status.status === 'active').map((k) => k.id),
+      obligations,
       proposed_to_you: mine
         .filter((k) => k.status.status === 'proposed' && k.counterparty === company.id)
         .map((k) => k.id),
@@ -128,8 +149,44 @@ export function observe(
       ),
     },
     reputation: visibleReputation(state, company, solvent),
-    round_budget: { tool_calls_left: toolCallsLeft },
+    round_budget: {
+      tool_calls_left: toolCallsLeft,
+      submitted: state.submitted.includes(company.id) ? 'batch' : emptyBatch ? 'empty' : 'none',
+    },
   };
+}
+
+/** Every obligation on the company's active contracts from its side, soonest due first. */
+function obligationsOf(
+  state: RunState,
+  company: Company,
+  mine: readonly Contract[],
+): ObligationView[] {
+  const rows: ObligationView[] = [];
+  for (const k of mine) {
+    if (k.status.status !== 'active') continue;
+    const side = k.proposer === company.id ? 'proposer' : 'counterparty';
+    const counterparty = k.proposer === company.id ? k.counterparty : k.proposer;
+    k.obligations.forEach((o, index) => {
+      const total = o.kind === 'goods' ? o.qty : o.amount;
+      rows.push({
+        contract: k.id,
+        obligation: index,
+        counterparty,
+        direction: o.by === side ? 'you_owe' : 'owed_to_you',
+        kind: o.kind,
+        ...(o.kind === 'goods' ? { good: o.good } : {}),
+        remaining: Math.max(0, total - o.met),
+        deposited: o.met,
+        due_turn: o.due_turn,
+        turns_left: o.due_turn - state.turn,
+      });
+    });
+  }
+  return rows.sort(
+    (a, b) =>
+      a.due_turn - b.due_turn || (a.contract < b.contract ? -1 : 1) || a.obligation - b.obligation,
+  );
 }
 
 function scrapPerUnit(state: RunState): Record<Good, number> {

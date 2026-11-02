@@ -940,6 +940,79 @@ describe('trade layer', () => {
 });
 
 describe('observation', () => {
+  it('lists each active obligation from both sides, with escrow and what is still owed', () => {
+    const g = game({
+      starting_inventory: {
+        miner: { ore: 12 },
+        logger: {},
+        smelter: { ore: 0 },
+        mill: {},
+        toolmaker: {},
+        furniture_maker: {},
+      },
+    });
+    g.submit('c01', [
+      {
+        type: 'propose_contract',
+        counterparty: 'c05',
+        terms_text: '',
+        obligations: [
+          { kind: 'goods', by: 'proposer', good: 'ore', qty: 4, due_turn: 3 },
+          { kind: 'cash', by: 'counterparty', amount: 60, due_turn: 2 },
+        ],
+      },
+    ]);
+    g.run({ kind: 'resolve_round' });
+    g.submit('c05', [{ type: 'accept_contract', contract: 'k1' }]);
+    g.run({ kind: 'resolve_round' });
+    const none = { contracts_changed: [], messages: [] };
+    expect(observe(g.state(), company(g, 'c01'), none, 8).round_budget.submitted).toBe('none');
+    g.submit('c01', [{ type: 'deliver', contract: 'k1', obligation: 0, qty: 3 }]);
+    expect(observe(g.state(), company(g, 'c01'), none, 7).round_budget.submitted).toBe('batch');
+    g.closeTurn();
+    const miner = observe(g.state(), company(g, 'c01'), none, 8);
+    expect(miner.turn).toBe(2);
+    expect(miner.round_budget.submitted).toBe('none');
+    expect(miner.you.inventory).toEqual({ ore: 9 });
+    expect(miner.you.in_escrow).toEqual({ cash: 0, goods: { ore: 3 } });
+    expect(miner.you.still_owed_by_you).toEqual({ cash: 0, goods: { ore: 1 } });
+    expect(miner.you.still_owed_to_you).toEqual({ cash: 60, goods: {} });
+    expect(miner.contracts.obligations).toEqual([
+      {
+        contract: 'k1',
+        obligation: 1,
+        counterparty: 'c05',
+        direction: 'owed_to_you',
+        kind: 'cash',
+        remaining: 60,
+        deposited: 0,
+        due_turn: 2,
+        turns_left: 0,
+      },
+      {
+        contract: 'k1',
+        obligation: 0,
+        counterparty: 'c05',
+        direction: 'you_owe',
+        kind: 'goods',
+        good: 'ore',
+        remaining: 1,
+        deposited: 3,
+        due_turn: 3,
+        turns_left: 1,
+      },
+    ]);
+    const smelter = observe(g.state(), company(g, 'c05'), none, 8, true);
+    expect(smelter.round_budget.submitted).toBe('empty');
+    expect(smelter.contracts.obligations.map((o) => o.direction)).toEqual([
+      'you_owe',
+      'owed_to_you',
+    ]);
+    expect(smelter.you.still_owed_by_you).toEqual({ cash: 60, goods: {} });
+    expect(smelter.you.still_owed_to_you).toEqual({ cash: 0, goods: { ore: 1 } });
+    expect(smelter.you.in_escrow).toEqual({ cash: 0, goods: {} });
+  });
+
   it('shows the company its own view, the market, and reputation per the knob', () => {
     const g = game({
       starting_inventory: {

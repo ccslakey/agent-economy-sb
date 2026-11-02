@@ -24,9 +24,9 @@ Done when a run's tool-call log reconstructs, for any company, what it read and 
 
 ### 2. Put obligations, commitments, and submission status in the observation
 
-- [ ] **Obligations.** For each active contract the observation lists what you owe and are owed, the quantity still to deposit, the counterparty, the due turn, and the status. Both parties see the same contract from their own side.
-- [ ] **Commitments and escrow.** The observation lists what you have deposited and not yet received back, and what you have promised and not yet deposited, so working capital locked in multi-turn contracts is visible. Available cash and inventory already exclude deposits.
-- [ ] **Submission status.** The observation says whether this round's batch is in, and whether it was empty.
+- [x] **Obligations.** For each active contract the observation lists what you owe and are owed, the quantity still to deposit, the counterparty, the due turn, and the status. Both parties see the same contract from their own side.
+- [x] **Commitments and escrow.** The observation lists what you have deposited and not yet received back, and what you have promised and not yet deposited, so working capital locked in multi-turn contracts is visible. Available cash and inventory already exclude deposits.
+- [x] **Submission status.** The observation says whether this round's batch is in, and whether it was empty.
 
 Done when an agent can act on an obligation without spending a tool call on the contracts route, and a test covers a contract seen from each party.
 
@@ -63,9 +63,9 @@ Scenario fixtures with held-out cases, scripted trajectories as evaluator tests,
 Keep this block current at the end of each step.
 
 ```text
-Current step: 1
-Status: In progress
-Branch: unit-16-tool-calls
-Last completed: step 1 tool-call log and rules wording (this branch)
-Next action: step 2, obligations in the observation
+Current step: 2
+Status: Complete pending merge
+Branch: unit-17-obligations (stacked on unit-16-tool-calls)
+Last completed: step 2, obligations, escrow, and submission status in the observation
+Next action: step 3, default mechanism and partner choice reports over the existing runs
 ```
