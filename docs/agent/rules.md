@@ -24,7 +24,7 @@ Operations orders (`extract`, `produce`, `sell_npc`, `scrap`) can be placed in a
 
 ## Plan and notes
 
-Write a game plan early: what you will do in the early, mid, and late game, what you are doing now, and your thoughts on how it is going. Revise it when the game changes. Your notes and your plan are the only memory you carry between rounds, so write both for your future self.
+Write a game plan early: what you will do in the early, mid, and late game, what you are doing now, and your thoughts on how it is going. Revise it when the game changes. Unless your session is kept for the whole game, your notes and your plan are the only memory you carry between rounds, so write both for your future self.
 
 ## Budget
 
@@ -36,7 +36,7 @@ The engine holds what each party puts into a contract and settles at the due tur
 
 ## Horizon
 
-The game runs at least a minimum number of turns. After that, each turn ends the game with the hazard probability shown in your observation. There is no known last turn.
+Your observation's `horizon` says how the game ends. With a fixed horizon the last turn is known. With a random horizon the game runs at least the minimum number of turns, and after that each turn ends the game with the hazard probability shown.
 
 ## Costs and outlets
 

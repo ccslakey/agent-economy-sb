@@ -210,6 +210,7 @@ Plain REST over JSON, one bearer token per company. Version one is deliberately 
 | GET, PUT | `/v1/notes`                      | The agent's own persistent markdown notes, capped by `limits`           |
 | GET, PUT | `/v1/plan`                       | The agent's standing plan: early, mid, late, now, thoughts. Every revision kept |
 | POST     | `/v1/bug_report`                 | Free-text report of anything confusing or broken                        |
+| POST     | `/v1/calls`                      | Posted by the MCP server, not the agent: one row per tool call, free     |
 
 **Action types** (inside one `/v1/actions` batch)
 
@@ -238,7 +239,10 @@ The response returns a result per action, in order. A failed action never blocks
     "cash": 1840,
     "inventory": { "timber": 4, "plank": 9 },
     "capacity": { "plank": 6 },
-    "pending_orders": { "produce": { "plank": 4 } }
+    "pending_orders": { "produce": { "plank": 4 } },
+    "in_escrow": { "cash": 0, "goods": { "plank": 6 } },
+    "still_owed_by_you": { "cash": 0, "goods": {} },
+    "still_owed_to_you": { "cash": 270, "goods": {} }
   },
   "groves": [{ "id": "g1", "stock": 18 }, { "id": "g2", "stock": 3 }],
   "market": {
@@ -250,6 +254,10 @@ The response returns a result per action, in order. A failed action never blocks
   "companies": [{ "id": "c03", "name": "Fellwood", "roles": ["logger"], "model": null }],
   "contracts": {
     "active": ["k112"],
+    "obligations": [
+      { "contract": "k112", "obligation": 0, "counterparty": "c11", "direction": "you_owe", "kind": "goods", "good": "plank", "remaining": 0, "deposited": 6, "due_turn": 14, "turns_left": 0 },
+      { "contract": "k112", "obligation": 1, "counterparty": "c11", "direction": "owed_to_you", "kind": "cash", "remaining": 270, "deposited": 0, "due_turn": 15, "turns_left": 1 }
+    ],
     "proposed_to_you": ["k131"],
     "changed_since_last_round": ["k108"]
   },
@@ -257,7 +265,7 @@ The response returns a result per action, in order. A failed action never blocks
   "reputation": {
     "c03": { "completed": 6, "defaulted": 0, "value_defaulted": 0 }
   },
-  "round_budget": { "tool_calls_left": 6 }
+  "round_budget": { "tool_calls_left": 6, "submitted": "none" }
 }
 ```
 
@@ -278,6 +286,7 @@ The world is event-sourced: an append-only `events` table in Postgres is the onl
 | `runs`              | Config (jsonb), seed, `experiment_id`, status, start and end times                                        | Source              |
 | `events`            | `id`, `run_id`, `turn`, `round`, `seq`, `type`, `actor`, `payload` (jsonb), `created_at`                  | Source, append-only |
 | `agent_traces`      | Per agent per round: prompt, response, tool calls, reasoning where exposed, tokens, nominal cost, latency | Source, large blobs |
+| `tool_calls`        | Per agent per tool call: tool, input, output, duration, and the turn and round the API saw when it arrived | Source, what the agent read and did |
 | `company_snapshots` | Cash, inventory, reputation, net worth per company per turn                                               | Projection          |
 | `contracts_current` | Latest state of every contract                                                                            | Projection          |
 | `market_clears`     | Good, quantity, price per turn                                                                            | Projection          |
@@ -315,7 +324,7 @@ A read-only web app for a non-player admin. It fetches a run's event log once an
 
 **Notable moments** are detected from the event log by rules, not by a model (`packages/engine/src/moments.ts`): default waves, the worst defaulter, bankruptcies, shocks and the price reaction, the largest price swing, lead changes, stalled trade, bot handoffs, license purchases and auctions, and the end of the run. Each moment carries the event ids it rests on, and the dashboard renders them as chips that describe the cited event, so a claim is checkable rather than just plausible.
 
-**Reasoning traces.** The runner stores each session's end-of-round summary and token usage, not its tool calls or hidden reasoning, so the trace panel shows what the agent said it did each round beside the plan it kept.
+**Reasoning traces.** The runner stores each session's end-of-round summary and token usage, and the MCP server logs every tool call with the turn and round the API saw. Hidden reasoning is not captured. The trace panel shows what the agent said it did each round beside the plan it kept; the tool-call log is stored but not yet on the dashboard.
 ## Agent runner and harness
 
 The runner is a separate process that plays every company through the public API, exactly as an outside agent would. The engine never calls a model, so anyone can later point their own agent at a run.
@@ -385,11 +394,11 @@ Each entry states a rule and, where a run decided it, points at the report in `d
 - **End-of-game inventory.** Scored at 50% of reference price, so holding unsold output is worth less than selling it and more than scrapping it.
 - **Reference prices.** Ingot 55, plank 45, and tool 160 give every role about 150 per turn at capacity before upkeep. Tuned against scripted bots: at those prices honest traders survived 62 of 64 runs and scored four times the isolated producer.
 - **Observation porcelain.** The observation carries the company's recipes, the reference and scrap prices, its net worth, last turn's sales, itemized upkeep and storage, and the horizon as a known last turn or a minimum plus hazard. Agents keep a structured plan with early, mid, late, now, and thoughts fields, revised on the first round of every turn, with every revision kept. Each item was added after a run showed agents acting without it (the first three M4 runs in the log).
-- **Needs board.** A knob, off by default, that lists every company's input shortfall and output stock. Who-wants-what is an information-structure choice to experiment with, not a default. The first sweep found it reduced completions.
+- **Needs board.** A knob, off by default, that lists every company's input shortfall and output stock. Who-wants-what is an information-structure choice to experiment with, not a default. It reduced completions in fresh-session runs and is the high-variance knob in awake runs, where one seed collapsed to negative welfare.
 - **Penalty regime.** Every contract is held by the engine and settles at the first missed due turn. A party that performed gets its deposits back; a party that failed loses them and pays `default_penalty_fraction` of its side's value, destroyed rather than paid to anyone. The escrow flag and fee, the `enforced` mode, and the cured state are gone. Decided after the third M4 run, where an unreliable toolmaker won by taking deliveries and never paying.
-- **Penalty fraction.** The fraction does not move the default rate; it only changes how much cash the regime burns. The default should drop toward 0.25, and overpromising is a planning failure to fix on the agent side (the penalty-fractions sweep).
+- **Penalty fraction.** Stays at 0.75. In fresh-session runs the fraction did not move the default rate and only changed how much cash the regime burned, so dropping it toward 0.25 was recommended. Awake agents respond to what a default costs: 0.25 gave the lowest trade value of any six-company variant, so the recommendation is withdrawn (the penalty-fractions sweep and the awake replay).
 - **Turn income.** A knob, default 0. At 20 it moves survival and welfare by about the cash it adds and nothing else.
-- **Persistent sessions.** One session per company that plays the whole game and waits between rounds is the recommended default for experiments about behavior rather than memory. Awake runs beat fresh-session runs on every measure and cost a fraction of the sessions. A fresh-session default rate should be read as a memory failure before it is read as a trust failure (the awake sweep).
+- **Persistent sessions.** One session per company that plays the whole game and waits between rounds is the recommended default for experiments about behavior rather than memory. Awake runs beat fresh-session runs on every measure and cost a fraction of the sessions. A fresh-session default rate should be read as a memory failure before it is read as a trust failure. With memory the knobs move in the direction the rules intend: enforcement off and a lower penalty both cost completions and welfare. Awake runs are cheap enough that the next sweep should use ten seeds (the awake sweep and the awake replay of every knob).
 - **Demand across runs.** Demand parameters stay fixed and the seed is the replicate. Experiments pair runs by seed across knob settings and start with three to five seeds per setting. A different demand curve is a named profile knob, never an edit to the economy table.
 
 ## Open questions

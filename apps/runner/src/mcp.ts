@@ -42,6 +42,20 @@ export function buildMcpServer(client: GameClient, options: McpOptions = {}): Mc
   const server = new McpServer({ name: 'agent-economy', version: '0.1.0' });
   const asText = (promise: Promise<string>) =>
     promise.then((text) => ({ content: [{ type: 'text' as const, text }] }));
+  type Reply = { content: { type: 'text'; text: string }[] };
+  type Handler<A> = (args: A) => Promise<Reply>;
+  /** Record the call with the API so the run's record shows what the agent read and did. The log never fails the tool. */
+  const logged =
+    <A>(tool: string, handler: Handler<A>): Handler<A> =>
+    async (args) => {
+      const started = Date.now();
+      const reply = await handler(args);
+      const output = reply.content.map((c) => c.text).join('');
+      await client
+        .call('POST', '/v1/calls', { tool, input: args, output, duration_ms: Date.now() - started })
+        .catch(() => undefined);
+      return reply;
+    };
 
   server.registerTool(
     'observation',
@@ -50,7 +64,7 @@ export function buildMcpServer(client: GameClient, options: McpOptions = {}): Mc
         'Your current view of the game: turn, round, cash, inventory, capacity, pending orders, companies, groves, last market prices, your contracts, new messages, reputation, and tool calls left this round.',
       inputSchema: {},
     },
-    () => asText(client.call('GET', '/v1/observation')),
+    logged('observation', () => asText(client.call('GET', '/v1/observation'))),
   );
 
   server.registerTool(
@@ -60,7 +74,9 @@ export function buildMcpServer(client: GameClient, options: McpOptions = {}): Mc
         "Submit this round's batch of actions. One batch per round. Returns one result per action, in order. See the api.md doc for every action shape.",
       inputSchema: { actions: z.array(z.record(z.string(), z.unknown())) },
     },
-    ({ actions }) => asText(client.call('POST', '/v1/actions', { actions })),
+    logged('submit_actions', ({ actions }) =>
+      asText(client.call('POST', '/v1/actions', { actions })),
+    ),
   );
 
   server.registerTool(
@@ -69,8 +85,9 @@ export function buildMcpServer(client: GameClient, options: McpOptions = {}): Mc
       description: 'Your past action batches with per-action results, optionally for one turn.',
       inputSchema: { turn: z.number().int().optional() },
     },
-    ({ turn }) =>
+    logged('past_actions', ({ turn }) =>
       asText(client.call('GET', `/v1/actions${turn === undefined ? '' : `?turn=${turn}`}`)),
+    ),
   );
 
   server.registerTool(
@@ -80,8 +97,9 @@ export function buildMcpServer(client: GameClient, options: McpOptions = {}): Mc
         'Your contracts with full terms and status, optionally filtered by status: proposed, active, completed, defaulted, rejected, withdrawn, expired.',
       inputSchema: { status: z.string().optional() },
     },
-    ({ status }) =>
+    logged('contracts', ({ status }) =>
       asText(client.call('GET', `/v1/contracts${status === undefined ? '' : `?status=${status}`}`)),
+    ),
   );
 
   server.registerTool(
@@ -90,8 +108,9 @@ export function buildMcpServer(client: GameClient, options: McpOptions = {}): Mc
       description: 'Public messages and your direct messages, optionally for one turn.',
       inputSchema: { turn: z.number().int().optional() },
     },
-    ({ turn }) =>
+    logged('messages', ({ turn }) =>
       asText(client.call('GET', `/v1/messages${turn === undefined ? '' : `?turn=${turn}`}`)),
+    ),
   );
 
   server.registerTool(
@@ -100,7 +119,7 @@ export function buildMcpServer(client: GameClient, options: McpOptions = {}): Mc
       description: 'NPC market clearing quantity and price per final good for every past turn.',
       inputSchema: {},
     },
-    () => asText(client.call('GET', '/v1/market')),
+    logged('market', () => asText(client.call('GET', '/v1/market'))),
   );
 
   server.registerTool(
@@ -110,13 +129,14 @@ export function buildMcpServer(client: GameClient, options: McpOptions = {}): Mc
         'The game documentation. Call with no file to list files, or with a file name (rules.md, recipes.md, contracts.md, api.md) to read it.',
       inputSchema: { file: z.string().optional() },
     },
-    ({ file }) =>
+    logged('docs', ({ file }) =>
       asText(
         client.call(
           'GET',
           file === undefined ? '/v1/docs' : `/v1/docs/${encodeURIComponent(file)}`,
         ),
       ),
+    ),
   );
 
   server.registerTool(
@@ -126,7 +146,7 @@ export function buildMcpServer(client: GameClient, options: McpOptions = {}): Mc
         'Your standing game plan: early, mid, and late game, what you are doing now, and your thoughts on how the game is going. Null before you write one.',
       inputSchema: {},
     },
-    () => asText(client.call('GET', '/v1/plan')),
+    logged('read_plan', () => asText(client.call('GET', '/v1/plan'))),
   );
 
   server.registerTool(
@@ -142,7 +162,7 @@ export function buildMcpServer(client: GameClient, options: McpOptions = {}): Mc
         thoughts: z.string(),
       },
     },
-    (plan) => asText(client.call('PUT', '/v1/plan', plan)),
+    logged('write_plan', (plan) => asText(client.call('PUT', '/v1/plan', plan))),
   );
 
   server.registerTool(
@@ -151,7 +171,7 @@ export function buildMcpServer(client: GameClient, options: McpOptions = {}): Mc
       description: 'Your private notes from earlier rounds. Your only memory between rounds.',
       inputSchema: {},
     },
-    () => asText(client.call('GET', '/v1/notes')),
+    logged('read_notes', () => asText(client.call('GET', '/v1/notes'))),
   );
 
   server.registerTool(
@@ -161,7 +181,7 @@ export function buildMcpServer(client: GameClient, options: McpOptions = {}): Mc
         'Replace your private notes. Keep them short; there is a length cap. Write what your future self needs to know.',
       inputSchema: { text: z.string() },
     },
-    ({ text }) => asText(client.call('PUT', '/v1/notes', { text })),
+    logged('write_notes', ({ text }) => asText(client.call('PUT', '/v1/notes', { text }))),
   );
 
   if (options.wait === true)
@@ -172,14 +192,14 @@ export function buildMcpServer(client: GameClient, options: McpOptions = {}): Mc
           'Wait until the next round opens, then return your fresh observation. Pass the turn and round you just acted in, from your observation. Returns status "ended" with the final scores when the game is over. Spends no tool call. For a session that plays the whole game.',
         inputSchema: { turn: z.number().int(), round: z.number().int() },
       },
-      async ({ turn, round }) => {
+      logged('wait_for_round', async ({ turn, round }) => {
         for (;;) {
           const text = await client.call('GET', `/v1/wait?turn=${turn}&round=${round}`);
           if (text.startsWith('HTTP ')) return { content: [{ type: 'text' as const, text }] };
           const { status } = JSON.parse(text) as { status: string };
           if (status !== 'waiting') return { content: [{ type: 'text' as const, text }] };
         }
-      },
+      }),
     );
 
   server.registerTool(
@@ -188,7 +208,7 @@ export function buildMcpServer(client: GameClient, options: McpOptions = {}): Mc
       description: 'Report anything confusing or broken about the game or this API.',
       inputSchema: { text: Text },
     },
-    ({ text }) => asText(client.call('POST', '/v1/bug_report', { text })),
+    logged('bug_report', ({ text }) => asText(client.call('POST', '/v1/bug_report', { text }))),
   );
 
   return server;

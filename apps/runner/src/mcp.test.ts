@@ -30,6 +30,7 @@ const config = {
 
 let app: Awaited<ReturnType<typeof buildServer>>;
 let client: Client;
+let runId = '';
 
 beforeAll(async () => {
   app = await buildServer({
@@ -44,7 +45,8 @@ beforeAll(async () => {
     headers: { 'x-admin-token': 'admin' },
     payload: config,
   });
-  const { tokens } = created.json() as { tokens: Record<string, string> };
+  const { tokens, run_id } = created.json() as { tokens: Record<string, string>; run_id: string };
+  runId = run_id;
   const server = buildMcpServer(new GameClient({ baseUrl, token: tokens.c01 ?? '' }));
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
   await server.connect(serverSide);
@@ -131,5 +133,21 @@ describe('mcp tools', () => {
       last = text(await client.callTool({ name: 'market', arguments: {} }));
     expect(last).toContain('HTTP 409');
     expect(last).toContain('ROUND_CLOSED');
+  });
+
+  it('logs every tool call to the API with its input and output', async () => {
+    await client.callTool({ name: 'read_notes', arguments: {} });
+    const listed = await app.inject({
+      method: 'GET',
+      url: `/admin/runs/${runId}/calls?company=c01`,
+      headers: { 'x-admin-token': 'admin' },
+    });
+    const { calls } = listed.json() as {
+      calls: { tool: string; output: string; input: unknown }[];
+    };
+    const logged = calls.filter((c) => c.tool === 'read_notes').at(-1);
+    expect(logged).toMatchObject({ input: {} });
+    expect(logged?.output).toContain('ROUND_CLOSED');
+    expect(calls.length).toBeGreaterThan(8);
   });
 });
