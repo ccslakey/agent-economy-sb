@@ -50,7 +50,7 @@ Done when the spec records the four-cell table and names which cell the earlier 
 
 - [ ] **Reputation sweep.** The existing reputation visibility knob (public, own only, hidden), ten seeds, awake mode, twelve companies so every good has two suppliers, with step 3's partner-choice report as the outcome.
 - [ ] **Focal company.** One LLM company among scripted counterparties, rotated through all six roles, ten seeds per role, compared with the honest-trader bot in the same seat. The bots already propose pay-on-delivery purchases and shun visible defaulters, so the environment responds. Repeat per model to compare models with the population held fixed.
-- [ ] **Provenance.** Each run records the source revision, the CLI version, the resolved model id, and the prompt and docs versions, so a comparison across months is still a comparison.
+- [x] **Provenance.** Each run records the source revision, the CLI version, the resolved model id, and the prompt and docs versions, so a comparison across months is still a comparison.
 
 Done when the spec has one table per question with paired differences and a seed count, and names the model as a system result (software plus model), not a model claim.
 
@@ -63,9 +63,9 @@ Scenario fixtures with held-out cases, scripted trajectories as evaluator tests,
 Keep this block current at the end of each step.
 
 ```text
-Current step: 4
-Status: Knobs done; sweep config ready in configs/sweeps/m6-memory.yaml, not yet run
-Branch: unit-19-memory
-Last completed: step 4 knobs (notes, history) and the four-cell sweep config
-Next action: run the memory sweep when the user says so, then record the four-cell table
+Current step: 5
+Status: Provenance recorded per run; memory sweep config ready in configs/sweeps/m6-memory.yaml, not yet run
+Branch: unit-20-provenance
+Last completed: step 5 provenance (source revision, CLI version, prompt and docs digests, resolved model ids)
+Next action: focal-company sweep shape and per-seat report, reputation sweep config; then run the sweeps when the user says so
 ```

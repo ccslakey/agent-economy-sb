@@ -7,6 +7,7 @@ export * from './contracts.ts';
 export * from './events.ts';
 export * from './ids.ts';
 export * from './observation.ts';
+export * from './provenance.ts';
 export * from './state.ts';
 export * from './sweep.ts';
 export * from './world.ts';

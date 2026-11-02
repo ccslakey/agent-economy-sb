@@ -7,7 +7,8 @@ import { expandSweep, Sweep, type SweepRun } from '@agent-economy/schema';
 import { parse as parseYaml } from 'yaml';
 import { claudeSpawner } from './claude.ts';
 import { type ComparedRun, compareRuns } from './compare.ts';
-import { createRun, drive } from './drive.ts';
+import { createRun, drive, recordProvenance } from './drive.ts';
+import { collectProvenance } from './provenance.ts';
 
 // Run a sweep: every variant times every seed, a few runs at a time, then the comparison table.
 // Rerunning a sweep skips any variant and seed that already has an ended run, so an interrupted
@@ -69,10 +70,15 @@ if (compareOnly !== undefined) {
   const sweep = Sweep.parse(parseYaml(await readFile(sweepPath, 'utf8')));
   const concurrency = Number(args.get('concurrency') ?? 1);
   const variant = args.get('prompt') ?? 'neutral';
-  const systemPrompt = await readFile(
-    path.resolve(import.meta.dirname, `../../../docs/prompts/${variant}.md`),
-    'utf8',
-  );
+  const promptPath = path.resolve(import.meta.dirname, `../../../docs/prompts/${variant}.md`);
+  const systemPrompt = await readFile(promptPath, 'utf8');
+  // Collected once: every run of the sweep is played by this source, this CLI, and this prompt.
+  const provenance = await collectProvenance({
+    repoDir: path.resolve(import.meta.dirname, '../../..'),
+    promptVariant: variant,
+    promptPath,
+    docsDir: path.resolve(import.meta.dirname, '../../../docs/agent'),
+  });
   const done = await cleanRuns(sweep.experiment_id);
   const queue: SweepRun[] = expandSweep(sweep).filter(
     (r) =>
@@ -83,6 +89,7 @@ if (compareOnly !== undefined) {
   const worker = async (): Promise<void> => {
     for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
       const runId = await createRun(api, adminToken, next.config);
+      await recordProvenance(api, adminToken, runId, provenance);
       const tag = `${next.config.experiment_id} seed ${next.seed} (${runId})`;
       log(`started ${tag}`);
       const result = await drive({

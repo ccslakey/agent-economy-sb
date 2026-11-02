@@ -33,6 +33,7 @@ await store.createRun({
   config,
   status: 'ended',
   tokens: Object.fromEntries(config.population.map((p) => [p.id, randomUUID()])),
+  provenance: null,
 });
 await store.append(runId, played.log);
 await store.close();

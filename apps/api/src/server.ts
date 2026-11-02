@@ -8,6 +8,7 @@ import {
   type Company,
   CompanyId,
   Plan,
+  Provenance,
   RunConfig,
   RunId,
 } from '@agent-economy/schema';
@@ -346,6 +347,7 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
       config: parsed.data,
       status: 'running',
       tokens: Object.fromEntries(parsed.data.population.map((p) => [p.id, randomUUID()])),
+      provenance: null,
     };
     await options.store.createRun(row);
     const game = await Game.create(parsed.data, runId, gameOptions(runId));
@@ -511,6 +513,37 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
     return { calls: await options.store.listToolCalls(id.data, company) };
   });
 
+  app.put<{ Params: { id: string } }>('/admin/runs/:id/provenance', async (request, reply) => {
+    if (!(await admin(request, reply))) return;
+    const id = RunId.safeParse(request.params.id);
+    const run = id.success ? await options.store.getRun(id.data) : null;
+    if (!id.success || run === null) {
+      return reply.code(404).send({ code: 'NOT_FOUND', reason: 'no such run' });
+    }
+    const body = Provenance.safeParse(request.body);
+    if (!body.success) {
+      return reply
+        .code(400)
+        .send({ code: 'INVALID_PROVENANCE', reason: z.prettifyError(body.error) });
+    }
+    await options.store.setProvenance(id.data, body.data);
+    return reply.code(204).send();
+  });
+
+  /** What the runner recorded, plus the model ids the CLI resolved each requested model to, read from the traces. */
+  app.get<{ Params: { id: string } }>('/admin/runs/:id/provenance', async (request, reply) => {
+    if (!(await admin(request, reply))) return;
+    const id = RunId.safeParse(request.params.id);
+    const run = id.success ? await options.store.getRun(id.data) : null;
+    if (!id.success || run === null) {
+      return reply.code(404).send({ code: 'NOT_FOUND', reason: 'no such run' });
+    }
+    return {
+      ...run.provenance,
+      resolved_models: resolvedModels(await options.store.listTraces(id.data)),
+    };
+  });
+
   /** Sessions, tokens, cost, and latency rolled up by company and by model. The traces themselves stay on the traces route. */
   app.get<{ Params: { id: string } }>('/admin/runs/:id/cost', async (request, reply) => {
     if (!(await admin(request, reply))) return;
@@ -649,6 +682,20 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
   });
 
   return app;
+}
+
+/** For each model the runner asked for, the model ids the CLI reports under `modelUsage` in its results. */
+export function resolvedModels(traces: readonly TraceRow[]): Record<string, string[]> {
+  const out: Record<string, Set<string>> = {};
+  for (const t of traces) {
+    if (t.model === null) continue;
+    const usage = t.result.modelUsage;
+    if (usage === null || typeof usage !== 'object') continue;
+    const ids = out[t.model] ?? new Set<string>();
+    out[t.model] = ids;
+    for (const id of Object.keys(usage)) ids.add(id);
+  }
+  return Object.fromEntries(Object.entries(out).map(([k, v]) => [k, [...v].sort()]));
 }
 
 declare module 'fastify' {

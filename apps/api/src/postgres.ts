@@ -1,4 +1,4 @@
-import { CompanyId, Event, Plan, RunConfig, RunId } from '@agent-economy/schema';
+import { CompanyId, Event, Plan, Provenance, RunConfig, RunId } from '@agent-economy/schema';
 import { type Generated, type JSONColumnType, Kysely, PostgresDialect, sql } from 'kysely';
 import pg from 'pg';
 import { z } from 'zod';
@@ -14,6 +14,7 @@ type RunsTable = {
   experiment_id: string;
   status: string;
   tokens: JSONColumnType<Record<string, unknown>>;
+  provenance: JSONColumnType<Record<string, unknown>> | null;
   created_at: Generated<Date>;
   ended_at: Date | null;
 };
@@ -127,6 +128,7 @@ export class PostgresStore implements Store {
         created_at timestamptz not null default now(),
         ended_at timestamptz
       )`.execute(this.db);
+    await sql`alter table runs add column if not exists provenance jsonb`.execute(this.db);
     await sql`
       create table if not exists events (
         id text primary key,
@@ -326,7 +328,16 @@ export class PostgresStore implements Store {
         experiment_id: run.config.experiment_id,
         status: run.status,
         tokens: JSON.stringify(run.tokens),
+        provenance: run.provenance === null ? null : JSON.stringify(run.provenance),
       })
+      .execute();
+  }
+
+  async setProvenance(id: RunId, provenance: Provenance): Promise<void> {
+    await this.db
+      .updateTable('runs')
+      .set({ provenance: JSON.stringify(provenance) })
+      .where('id', '=', id)
       .execute();
   }
 
@@ -413,11 +424,18 @@ export class PostgresStore implements Store {
   }
 }
 
-function toRunRow(row: { id: string; config: unknown; status: string; tokens: unknown }): RunRow {
+function toRunRow(row: {
+  id: string;
+  config: unknown;
+  status: string;
+  tokens: unknown;
+  provenance: unknown;
+}): RunRow {
   return {
     id: RunId.parse(row.id),
     config: RunConfig.parse(row.config),
     status: Status.parse(row.status),
     tokens: Tokens.parse(row.tokens),
+    provenance: Provenance.nullable().parse(row.provenance ?? null),
   };
 }

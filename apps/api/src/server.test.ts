@@ -691,6 +691,75 @@ describe('agent routes', () => {
     });
   });
 
+  it('stores what played a run and reads the resolved model ids off its traces', async () => {
+    const run = await startRun();
+    const provenance = {
+      source_revision: 'abc123-dirty',
+      cli_version: '2.1.316 (Claude Code)',
+      prompt_variant: 'neutral',
+      prompt_sha256: 'a'.repeat(64),
+      docs_sha256: 'b'.repeat(64),
+      recorded_at: '2026-11-02T10:00:00.000Z',
+    };
+    const before = await api().inject({
+      method: 'GET',
+      url: `/admin/runs/${run.run_id}/provenance`,
+      headers: { 'x-admin-token': 'admin' },
+    });
+    expect(before.json()).toEqual({ resolved_models: {} });
+    const rejected = await api().inject({
+      method: 'PUT',
+      url: `/admin/runs/${run.run_id}/provenance`,
+      headers: { 'x-admin-token': 'admin' },
+      payload: { ...provenance, prompt_sha256: 'not a hash' },
+    });
+    expect(rejected.statusCode).toBe(400);
+    const put = await api().inject({
+      method: 'PUT',
+      url: `/admin/runs/${run.run_id}/provenance`,
+      headers: { 'x-admin-token': 'admin' },
+      payload: provenance,
+    });
+    expect(put.statusCode).toBe(204);
+    const trace = (company: string, model: string, usage: Record<string, unknown>) => ({
+      company,
+      turn: 1,
+      round: 1,
+      kind: 'round',
+      session_id: null,
+      model,
+      result: { modelUsage: usage },
+      tokens_in: 1,
+      tokens_out: 1,
+      cost_usd: 0,
+      duration_ms: 1,
+    });
+    for (const body of [
+      trace('c01', 'sonnet', { 'claude-sonnet-5-5': {} }),
+      trace('c01', 'sonnet', { 'claude-sonnet-5-5': {} }),
+      trace('c05', 'opus', { 'claude-opus-5-5': {}, 'claude-haiku-5-5': {} }),
+    ]) {
+      await api().inject({
+        method: 'POST',
+        url: `/admin/runs/${run.run_id}/traces`,
+        headers: { 'x-admin-token': 'admin' },
+        payload: body,
+      });
+    }
+    const after = await api().inject({
+      method: 'GET',
+      url: `/admin/runs/${run.run_id}/provenance`,
+      headers: { 'x-admin-token': 'admin' },
+    });
+    expect(after.json()).toEqual({
+      ...provenance,
+      resolved_models: {
+        sonnet: ['claude-sonnet-5-5'],
+        opus: ['claude-haiku-5-5', 'claude-opus-5-5'],
+      },
+    });
+  });
+
   it('pauses the clock and resumes, and reloads live runs from the store on restart', async () => {
     const store = new MemoryStore();
     const run = await startRun(store);
