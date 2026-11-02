@@ -32,11 +32,11 @@ Done when an agent can act on an obligation without spending a tool call on the 
 
 ### 3. Annotate defaults and partner choice over the runs we already have
 
-- [ ] **Default mechanism.** For every default in every ended run: did the failing party attempt the deposit (a deliver or pay action), was the attempt rejected and why, did it hold the goods or cash at the last actionable round, and did it have competing obligations due the same turn. Labels may overlap. Output is a table per run and a rollup per variant.
-- [ ] **Partner choice.** For every proposal after an attributable default: did the proposer have a visible default by the counterparty in the ledger, had the proposer itself been defaulted on by that counterparty, did it switch suppliers, and did it broadcast to several suppliers at once. Reports repeat exchange, switching, and the price paid relative to the reference price.
-- [ ] **Working capital.** Per company per turn: cash, inventory value, deposits in escrow, and promised but undeposited value, so a cash squeeze from locked escrow is visible as a series.
+- [x] **Default mechanism.** For every default in every ended run: did the failing party attempt the deposit (a deliver or pay action), was the attempt rejected and why, did it hold the goods or cash at the last actionable round, and did it have competing obligations due the same turn. Labels may overlap. Output is a table per run and a rollup per variant.
+- [x] **Partner choice.** For every proposal after an attributable default: did the proposer have a visible default by the counterparty in the ledger, had the proposer itself been defaulted on by that counterparty, did it switch suppliers, and did it broadcast to several suppliers at once. Reports repeat exchange, switching, and the price paid relative to the reference price.
+- [x] **Working capital.** Per company per turn: cash, inventory value, deposits in escrow, and promised but undeposited value, so a cash squeeze from locked escrow is visible as a series.
 
-Done when the three reports run against the existing database and the spec records what they say about the first 50 runs.
+Done when the three reports run against the existing database and `docs/experiments.md` records what they say about the first runs.
 
 ### 4. Isolate memory
 
@@ -48,7 +48,7 @@ Done when the spec records the four-cell table and names which cell the earlier 
 
 ### 5. Isolate reputation and model
 
-- [ ] **Reputation sweep.** The existing reputation visibility knob (public, own only, hidden), ten seeds, awake mode, with step 3's partner-choice report as the outcome.
+- [ ] **Reputation sweep.** The existing reputation visibility knob (public, own only, hidden), ten seeds, awake mode, twelve companies so every good has two suppliers, with step 3's partner-choice report as the outcome.
 - [ ] **Focal company.** One LLM company among scripted counterparties, rotated through all six roles, ten seeds per role, compared with the honest-trader bot in the same seat. The bots already propose pay-on-delivery purchases and shun visible defaulters, so the environment responds. Repeat per model to compare models with the population held fixed.
 - [ ] **Provenance.** Each run records the source revision, the CLI version, the resolved model id, and the prompt and docs versions, so a comparison across months is still a comparison.
 
@@ -63,9 +63,9 @@ Scenario fixtures with held-out cases, scripted trajectories as evaluator tests,
 Keep this block current at the end of each step.
 
 ```text
-Current step: 2
-Status: Complete pending merge
-Branch: unit-17-obligations (stacked on unit-16-tool-calls)
-Last completed: step 2, obligations, escrow, and submission status in the observation
-Next action: step 3, default mechanism and partner choice reports over the existing runs
+Current step: 3
+Status: Complete
+Branch: unit-18-reports
+Last completed: step 3, the three reports and the experiment-log entry on the first 45 clean runs
+Next action: step 4, notes toggle and history policy, then the four-cell memory sweep at six companies
 ```
