@@ -239,6 +239,18 @@ describe('agent routes', () => {
     expect(again.json()).toEqual({ results: [] });
   });
 
+  it('marks a run ended in the store when the wall clock plays it out', async () => {
+    const run = await startRun(new MemoryStore(), frozenClock(), {
+      ...config,
+      knobs: { ...config.knobs, context_persistence: 'persistent' },
+    });
+    for (let i = 0; i < 6; i++) {
+      run.clock.fire();
+      await new Promise((r) => setImmediate(r));
+    }
+    expect((await run.store.listRuns())[0]).toMatchObject({ status: 'ended' });
+  });
+
   it('runs the operations step after round three and ends on the fixed last turn', async () => {
     const run = await startRun();
     await api().inject({

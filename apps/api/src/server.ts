@@ -49,7 +49,12 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
   const tokens = new Map<string, { run: string; company: CompanyId }>();
 
   const gameOptions = (runId: RunId): GameOptions => ({
-    persist: (events) => options.store.append(runId, events),
+    persist: async (events) => {
+      await options.store.append(runId, events);
+      // Rounds advance on their own in a persistent run, so the game, not a route, ends the row.
+      if (events.some((e) => e.type === 'run_ended'))
+        await options.store.setRunStatus(runId, 'ended');
+    },
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
 
@@ -363,7 +368,6 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
     const game = gameOrFail(request.params.id, reply);
     if (game === null) return;
     const events = await game.advance();
-    if (game.state.phase.kind === 'ended') await options.store.setRunStatus(game.id, 'ended');
     return { events, turn: game.state.turn, phase: game.state.phase };
   });
 
