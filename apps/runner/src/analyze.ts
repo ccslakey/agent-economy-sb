@@ -9,6 +9,7 @@ import {
   summarize,
 } from '@agent-economy/engine';
 import type { Event, EventOf } from '@agent-economy/schema';
+import { fetchRetrying } from './http.ts';
 
 // The step 3 reports over ended runs: how each default happened, whom each proposal went to and
 // what the proposer could see about them, and how much each company had locked in escrow.
@@ -28,7 +29,9 @@ if (adminToken === undefined) throw new Error('set ADMIN_TOKEN');
 
 type Listing = { id: string; experiment_id: string; seed: number; status: string };
 const admin = async <T>(route: string): Promise<T> => {
-  const response = await fetch(`${api}${route}`, { headers: { 'x-admin-token': adminToken } });
+  const response = await fetchRetrying(`${api}${route}`, {
+    headers: { 'x-admin-token': adminToken },
+  });
   if (!response.ok) throw new Error(`GET ${route}: ${response.status} ${await response.text()}`);
   return (await response.json()) as T;
 };
