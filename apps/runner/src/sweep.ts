@@ -3,13 +3,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fold, type RunMetrics } from '@agent-economy/engine';
-import { type Event, expandSweep, Sweep, type SweepRun } from '@agent-economy/schema';
+import { type Event, expandSweep, ROLE_NAMES, Sweep, type SweepRun } from '@agent-economy/schema';
 import { parse as parseYaml } from 'yaml';
+import { acrossTable } from './across.ts';
 import { claudeSpawner } from './claude.ts';
-import { type ComparedRun, compareRuns } from './compare.ts';
+import { type ComparedRun, compareRuns, flatten } from './compare.ts';
 import { createRun, drive, recordProvenance } from './drive.ts';
-import { focalTable } from './focal.ts';
-import { collectProvenance } from './provenance.ts';
+import { focalSeat, focalTable, seatOutcome } from './focal.ts';
+import { collectProvenance, provenanceDifferences, type RunProvenance } from './provenance.ts';
 
 // Run a sweep: every variant times every seed, a few runs at a time, then the comparison table.
 // Rerunning a sweep skips any variant and seed that already has an ended run, so an interrupted
@@ -18,6 +19,13 @@ import { collectProvenance } from './provenance.ts';
 //   ADMIN_TOKEN=... node apps/runner/src/sweep.ts --api http://localhost:3000 --sweep configs/sweeps/m6-knobs.yaml [--concurrency 2]
 //   ADMIN_TOKEN=... node apps/runner/src/sweep.ts --api http://localhost:3000 --compare m6-knobs
 //   ADMIN_TOKEN=... node apps/runner/src/sweep.ts --api http://localhost:3000 --focal m7-focal
+//
+// Several experiments, comma separated, print one table across them: the first is the baseline,
+// and each later one is paired with it by seed and by variant (or by focal seat). That is how two
+// models or two months are compared. Every table ends with the provenance fields that differ
+// among the runs it read, so a comparison never hides a change of software, prompt, or model id.
+//
+//   ADMIN_TOKEN=... node apps/runner/src/sweep.ts --api http://localhost:3000 --focal m7-focal,m7-focal-opus
 
 const args = new Map<string, string>();
 for (let i = 2; i < process.argv.length; i += 2) {
@@ -36,15 +44,18 @@ const admin = async <T>(route: string): Promise<T> => {
   if (!response.ok) throw new Error(`GET ${route}: ${response.status} ${await response.text()}`);
   return (await response.json()) as T;
 };
-/** Ended runs of the experiment that no bot had to finish. A run with a handoff is replayed, not compared. */
-async function cleanRuns(experiment: string): Promise<(ComparedRun & { id: string })[]> {
-  const listed = (await admin<{ runs: Listing[] }>('/admin/runs')).runs.filter(
-    (r) => r.status === 'ended' && r.experiment_id.startsWith(`${experiment}/`),
-  );
+type CleanRun = ComparedRun & { id: string; experiment: string };
+/** Ended runs of the experiments that no bot had to finish. A run with a handoff is replayed, not compared. */
+async function cleanRuns(experiments: readonly string[]): Promise<CleanRun[]> {
+  const listed = (await admin<{ runs: Listing[] }>('/admin/runs')).runs.flatMap((r) => {
+    const experiment = experiments.find((e) => r.experiment_id.startsWith(`${e}/`));
+    return r.status === 'ended' && experiment !== undefined ? [{ ...r, experiment }] : [];
+  });
   const withMetrics = await Promise.all(
     listed.map(async (r) => ({
       id: r.id,
-      variant: r.experiment_id.slice(experiment.length + 1),
+      experiment: r.experiment,
+      variant: r.experiment_id.slice(r.experiment.length + 1),
       seed: r.seed,
       metrics: await admin<RunMetrics>(`/admin/runs/${r.id}/metrics`),
     })),
@@ -59,30 +70,83 @@ async function cleanRuns(experiment: string): Promise<(ComparedRun & { id: strin
   );
 }
 
-async function compare(experiment: string): Promise<void> {
-  process.stdout.write(`${compareRuns(await cleanRuns(experiment))}\n`);
+/** The provenance lines for a table: what differs among the runs it read, or one line saying nothing does. */
+async function provenanceLines(runs: readonly CleanRun[]): Promise<string> {
+  const records = await Promise.all(
+    runs.map(async (r) => ({
+      experiment: r.experiment,
+      provenance: await admin<RunProvenance>(`/admin/runs/${r.id}/provenance`),
+    })),
+  );
+  const lines = provenanceDifferences(records);
+  return lines.length === 0
+    ? 'provenance: same software, prompt, docs, and model ids across every run\n'
+    : `${lines.map((l) => `provenance: ${l}`).join('\n')}\n`;
 }
 
-/** The focal-company table: each LLM seat against the bot in the same seat, paired by seed. */
-async function focal(experiment: string): Promise<void> {
-  const runs = await cleanRuns(experiment);
+async function compare(experiments: readonly string[]): Promise<void> {
+  const runs = await cleanRuns(experiments);
+  const table =
+    experiments.length === 1
+      ? compareRuns(runs)
+      : acrossTable(
+          experiments,
+          runs.map((r) => ({
+            experiment: r.experiment,
+            group: r.variant,
+            seed: r.seed,
+            values: flatten(r.metrics),
+          })),
+        );
+  process.stdout.write(`${table}\n${await provenanceLines(runs)}`);
+}
+
+/**
+ * The focal-company table. One experiment: each LLM seat against the bot in the same seat,
+ * paired by seed. Several: each seat's LLM across the experiments, paired by seed, so the same
+ * seat played by two models is read side by side with the bot population held fixed.
+ */
+async function focal(experiments: readonly string[]): Promise<void> {
+  const runs = await cleanRuns(experiments);
   const folded = await Promise.all(
     runs.map(async (r) => {
       const { events } = await admin<{ events: Event[] }>(`/admin/runs/${r.id}/events`);
       const [started, ...rest] = events;
       if (started?.type !== 'run_started') throw new Error(`run ${r.id} has no run_started`);
-      return { variant: r.variant, seed: r.seed, state: fold(started, rest) };
+      return { ...r, state: fold(started, rest) };
     }),
   );
-  process.stdout.write(`${focalTable(folded)}\n`);
+  const table =
+    experiments.length === 1
+      ? focalTable(folded)
+      : acrossTable(
+          experiments,
+          folded
+            .flatMap((r) => {
+              const seat = focalSeat(r.state.config);
+              return seat === null ? [] : [{ r, seat }];
+            })
+            .sort(
+              (a, b) =>
+                ROLE_NAMES.indexOf(a.seat.role) - ROLE_NAMES.indexOf(b.seat.role) ||
+                (a.seat.id < b.seat.id ? -1 : 1),
+            )
+            .map(({ r, seat }) => ({
+              experiment: r.experiment,
+              group: `${seat.role} ${seat.id} ${seat.name}`,
+              seed: r.seed,
+              values: { ...seatOutcome(r.state, seat.id) },
+            })),
+        );
+  process.stdout.write(`${table}\n${await provenanceLines(runs)}`);
 }
 
 const compareOnly = args.get('compare');
 const focalOnly = args.get('focal');
 if (compareOnly !== undefined) {
-  await compare(compareOnly);
+  await compare(compareOnly.split(','));
 } else if (focalOnly !== undefined) {
-  await focal(focalOnly);
+  await focal(focalOnly.split(','));
 } else {
   const sweepPath = args.get('sweep');
   if (sweepPath === undefined) {
@@ -100,7 +164,7 @@ if (compareOnly !== undefined) {
     promptPath,
     docsDir: path.resolve(import.meta.dirname, '../../../docs/agent'),
   });
-  const done = await cleanRuns(sweep.experiment_id);
+  const done = await cleanRuns([sweep.experiment_id]);
   const queue: SweepRun[] = expandSweep(sweep).filter(
     (r) =>
       !done.some((d) => d.variant === r.variant && d.seed === r.seed) ||
@@ -127,5 +191,5 @@ if (compareOnly !== undefined) {
     }
   };
   await Promise.all(Array.from({ length: concurrency }, worker));
-  await compare(sweep.experiment_id);
+  await compare([sweep.experiment_id]);
 }

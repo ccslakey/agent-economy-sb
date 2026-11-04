@@ -69,3 +69,56 @@ export async function collectProvenance(sources: ProvenanceSources): Promise<Pro
     recorded_at: (sources.now ?? (() => new Date()))().toISOString(),
   };
 }
+
+/** What the provenance route serves for a run: the recorded fields, if any, plus the resolved model ids. */
+export type RunProvenance = Partial<Provenance> & { resolved_models?: Record<string, string[]> };
+
+export type ProvenanceOf = { experiment: string; provenance: RunProvenance };
+
+const FIELDS = [
+  'source_revision',
+  'cli_version',
+  'prompt_variant',
+  'prompt_sha256',
+  'docs_sha256',
+  'resolved_models',
+] as const;
+
+/** `m7-focal ×10, m7-focal-opus ×3`: which experiments, and how many of their runs, share a value. */
+function byExperiment(runs: readonly ProvenanceOf[]): string {
+  const counts = new Map<string, number>();
+  for (const r of runs) counts.set(r.experiment, (counts.get(r.experiment) ?? 0) + 1);
+  return [...counts].map(([e, n]) => `${e} ×${n}`).join(', ');
+}
+
+/**
+ * One line per provenance field whose value is not the same across the runs, naming each value
+ * and the runs that carry it, plus a line for any run played from a dirty source tree. Empty
+ * when every run was played by the same software, prompt, docs, and model ids. A run with no
+ * record shows as `unrecorded`, so a comparison with a pre-provenance run names that too.
+ */
+export function provenanceDifferences(runs: readonly ProvenanceOf[]): string[] {
+  const lines: string[] = [];
+  for (const field of FIELDS) {
+    const values = new Map<string, ProvenanceOf[]>();
+    for (const r of runs) {
+      const raw = r.provenance[field];
+      const value =
+        raw === undefined || (typeof raw === 'object' && Object.keys(raw).length === 0)
+          ? 'unrecorded'
+          : typeof raw === 'string'
+            ? raw
+            : Object.entries(raw)
+                .map(([k, ids]) => `${k}=${ids.join('+')}`)
+                .join(' ');
+      values.set(value, [...(values.get(value) ?? []), r]);
+    }
+    if (values.size < 2) continue;
+    lines.push(
+      `${field} differs: ${[...values].map(([v, rs]) => `${v} (${byExperiment(rs)})`).join(' | ')}`,
+    );
+  }
+  const dirty = runs.filter((r) => r.provenance.source_revision?.endsWith('-dirty'));
+  if (dirty.length > 0) lines.push(`dirty source tree: ${byExperiment(dirty)}`);
+  return lines;
+}

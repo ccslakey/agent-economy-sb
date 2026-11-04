@@ -54,6 +54,16 @@ Done when the spec records the four-cell table and names which cell the earlier 
 
 Done when the spec has one table per question with paired differences and a seed count, and names the model as a system result (software plus model), not a model claim.
 
+### 6. Compare models and compare across time
+
+The focal sweep holds the environment fixed per model, but each model's runs land in their own experiment, and the tables read one experiment at a time. Runs before step 5's provenance work have no provenance row at all.
+
+- [x] **Cross-experiment tables.** `sweep.ts --focal a,b` and `--compare a,b` take several experiments, pair runs by seed and seat (or by seed and variant) across them, and print the mean paired difference with its seed count. The first experiment is the baseline. Running two models in one sweep file is not the fix, since `focalTable` groups by seat id and would pool models that share a seat.
+- [x] **Provenance check in the tables.** Any table over several experiments, or over runs whose provenance differs, prints one line per field that differs: source revision, CLI version, prompt digest, docs digest, resolved model ids. A `-dirty` revision anywhere is named too. The table still prints; the check names the difference rather than hiding the run.
+- [ ] **Backfill what the old runs can tell.** For runs created before provenance existed (the M4 runs, m6-knobs, m6-awake), record the resolved model ids from their traces and the source revision inferred from the run's start time against git history, marked `inferred` so no table mistakes it for a recorded value. Prompt and docs digests stay unknown for those runs, and `docs/experiments.md` says so where they are cited.
+
+Done when one command prints Sonnet against a second model, seat by seat, paired by seed, with a seed count and the provenance differences named, and the pre-provenance runs carry what their traces can prove.
+
 ## Deferred
 
 Scenario fixtures with held-out cases, scripted trajectories as evaluator tests, and a pilot manifest are good science and each is a week of work. None is needed to answer the three questions from the runs we have, so they wait until steps 1 to 5 show which scenarios matter.
@@ -63,9 +73,9 @@ Scenario fixtures with held-out cases, scripted trajectories as evaluator tests,
 Keep this block current at the end of each step.
 
 ```text
-Current step: 5
-Status: Code done for steps 4 and 5. Sweeps not yet run: configs/sweeps/m6-memory.yaml, m7-reputation.yaml, m7-focal.yaml
-Branch: unit-21-focal
-Last completed: focal-company sweep shape (per-seat driver override), the per-seat table (sweep.ts --focal), and the reputation sweep config
-Next action: run the three sweeps when the user says so, in the order memory, reputation, focal; record each table in the spec's Decisions with its caveats
+Current step: 5, with step 6 planned
+Status: Code done for steps 4 and 5. Sweeps not yet run: configs/sweeps/m6-memory.yaml, m7-reputation.yaml, m7-focal.yaml. Step 6: cross-experiment tables and the provenance lines are built (sweep.ts --compare a,b / --focal a,b); the backfill of pre-provenance runs is not
+Branch: cross-experiment-tables
+Last completed: --compare and --focal over several experiments, paired by seed, with the provenance fields that differ printed under every table
+Next action: backfill resolved model ids and an inferred revision for the pre-provenance runs; run the three sweeps when the user says so, in the order memory, reputation, focal; record each table in the spec's Decisions with its caveats
 ```
