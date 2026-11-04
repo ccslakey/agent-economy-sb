@@ -186,25 +186,26 @@ export function buildMcpServer(client: GameClient, options: McpOptions = {}): Mc
       },
       logged('write_notes', ({ text }) => asText(client.call('PUT', '/v1/notes', { text }))),
     );
-
-    if (options.wait === true)
-      server.registerTool(
-        'wait_for_round',
-        {
-          description:
-            'Wait until the next round opens, then return your fresh observation. Pass the turn and round you just acted in, from your observation. Returns status "ended" with the final scores when the game is over. Spends no tool call. For a session that plays the whole game.',
-          inputSchema: { turn: z.number().int(), round: z.number().int() },
-        },
-        logged('wait_for_round', async ({ turn, round }) => {
-          for (;;) {
-            const text = await client.call('GET', `/v1/wait?turn=${turn}&round=${round}`);
-            if (text.startsWith('HTTP ')) return { content: [{ type: 'text' as const, text }] };
-            const { status } = JSON.parse(text) as { status: string };
-            if (status !== 'waiting') return { content: [{ type: 'text' as const, text }] };
-          }
-        }),
-      );
   }
+
+  // Outside the notes block: a persistent session must be able to wait whether or not it has notes.
+  if (options.wait === true)
+    server.registerTool(
+      'wait_for_round',
+      {
+        description:
+          'Wait until the next round opens, then return your fresh observation. Pass the turn and round you just acted in, from your observation. Returns status "ended" with the final scores when the game is over. Spends no tool call. For a session that plays the whole game.',
+        inputSchema: { turn: z.number().int(), round: z.number().int() },
+      },
+      logged('wait_for_round', async ({ turn, round }) => {
+        for (;;) {
+          const text = await client.call('GET', `/v1/wait?turn=${turn}&round=${round}`);
+          if (text.startsWith('HTTP ')) return { content: [{ type: 'text' as const, text }] };
+          const { status } = JSON.parse(text) as { status: string };
+          if (status !== 'waiting') return { content: [{ type: 'text' as const, text }] };
+        }
+      }),
+    );
 
   server.registerTool(
     'bug_report',

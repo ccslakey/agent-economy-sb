@@ -32,8 +32,8 @@ export type RunMetrics = {
   penalties: number;
   /** Reference value of every completed contract, both sides. */
   trade_value: number;
-  /** Sum over companies of final net worth minus starting net worth. */
-  welfare: number;
+  /** Sum over companies of final net worth minus starting net worth. An accounting total, not welfare: the NPC market's side never appears. */
+  net_worth_gained: number;
   /** Gini of final net worth, 0 when every company ends equal. */
   gini: number;
   messages: { public: number; dm: number };
@@ -137,7 +137,7 @@ export function runMetrics(started: EventOf<'run_started'>, rest: readonly Event
     default_rate_by_role,
     penalties,
     trade_value,
-    welfare: scores.reduce((sum, s) => sum + s, 0) - startingWorth,
+    net_worth_gained: scores.reduce((sum, s) => sum + s, 0) - startingWorth,
     gini: gini(scores),
     messages: { public: pub, dm },
     dm_share: rate(dm, state.messages.length),

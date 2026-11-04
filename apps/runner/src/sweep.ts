@@ -10,6 +10,7 @@ import { claudeSpawner } from './claude.ts';
 import { type ComparedRun, compareRuns, flatten } from './compare.ts';
 import { createRun, drive, recordProvenance } from './drive.ts';
 import { focalSeat, focalTable, seatOutcome } from './focal.ts';
+import { fetchRetrying } from './http.ts';
 import { collectProvenance, provenanceDifferences, type RunProvenance } from './provenance.ts';
 
 // Run a sweep: every variant times every seed, a few runs at a time, then the comparison table.
@@ -46,7 +47,9 @@ type Listing = {
   created_at: string;
 };
 const admin = async <T>(route: string): Promise<T> => {
-  const response = await fetch(`${api}${route}`, { headers: { 'x-admin-token': adminToken } });
+  const response = await fetchRetrying(`${api}${route}`, {
+    headers: { 'x-admin-token': adminToken },
+  });
   if (!response.ok) throw new Error(`GET ${route}: ${response.status} ${await response.text()}`);
   return (await response.json()) as T;
 };

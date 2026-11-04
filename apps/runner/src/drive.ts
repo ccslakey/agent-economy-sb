@@ -12,6 +12,7 @@ import {
 } from '@agent-economy/schema';
 import { BOTS, type BotMemory, freshMemory } from './bots.ts';
 import type { SessionResult, Spawner } from './claude.ts';
+import { fetchRetrying } from './http.ts';
 import { GameClient } from './mcp.ts';
 
 // The runner. Drives one run over HTTP: LLM companies through headless sessions, bot companies
@@ -87,7 +88,7 @@ export async function createRun(
 ): Promise<string> {
   const knobs = config.knobs as { context_persistence?: string } | undefined;
   const persistent = knobs?.context_persistence === 'persistent';
-  const response = await fetch(`${api}/admin/runs`, {
+  const response = await fetchRetrying(`${api}/admin/runs`, {
     method: 'POST',
     headers: { 'x-admin-token': adminToken, 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -106,7 +107,7 @@ export async function recordProvenance(
   runId: string,
   provenance: Provenance,
 ): Promise<void> {
-  const response = await fetch(`${api}/admin/runs/${runId}/provenance`, {
+  const response = await fetchRetrying(`${api}/admin/runs/${runId}/provenance`, {
     method: 'PUT',
     headers: { 'x-admin-token': adminToken, 'content-type': 'application/json' },
     body: JSON.stringify(provenance),
@@ -120,14 +121,18 @@ export async function drive(options: DriveOptions): Promise<DriveResult> {
   const quotaWaitMs = options.quotaWaitMs ?? 5 * 60 * 1000;
   const maxFailures = options.maxFailures ?? 3;
   const admin = async <T>(method: 'GET' | 'POST', route: string, body?: unknown): Promise<T> => {
-    const response = await fetch(`${options.api}${route}`, {
-      method,
-      headers: {
-        'x-admin-token': options.adminToken,
-        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+    const response = await fetchRetrying(
+      `${options.api}${route}`,
+      {
+        method,
+        headers: {
+          'x-admin-token': options.adminToken,
+          ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
+      { sleep: options.sleep, log },
+    );
     if (!response.ok)
       throw new Error(`${method} ${route}: ${response.status} ${await response.text()}`);
     return (await response.json()) as T;
