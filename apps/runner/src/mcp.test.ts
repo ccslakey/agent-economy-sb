@@ -98,6 +98,22 @@ describe('mcp tools', () => {
     await probe.close();
   });
 
+  it('still offers wait_for_round to a persistent session that has notes off', async () => {
+    const bare = buildMcpServer(new GameClient({ baseUrl: 'http://127.0.0.1:1', token: 'x' }), {
+      notes: false,
+      wait: true,
+    });
+    const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+    await bare.connect(serverSide);
+    const probe = new Client({ name: 'probe', version: '0' });
+    await probe.connect(clientSide);
+    const { tools } = await probe.listTools();
+    expect(tools.map((t) => t.name)).toContain('wait_for_round');
+    expect(tools.map((t) => t.name)).not.toContain('read_notes');
+    expect(tools).toHaveLength(9);
+    await probe.close();
+  });
+
   it('observes, submits, and reads back, spending the budget as it goes', async () => {
     const seen = JSON.parse(text(await client.callTool({ name: 'observation', arguments: {} })));
     expect(seen).toMatchObject({
