@@ -48,8 +48,8 @@ function Kpis({
       sub: `Completed contracts, both sides · ${fmt(m.penalties)} in penalties`,
     },
     {
-      label: 'Total welfare',
-      value: delta(m.welfare),
+      label: 'Net worth gained',
+      value: delta(m.net_worth_gained),
       sub: `Net worth gained, all companies · Gini ${m.gini.toFixed(2)}`,
     },
     {

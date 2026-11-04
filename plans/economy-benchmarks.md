@@ -2,7 +2,7 @@
 
 Three questions drive this work. How do agents track obligations against round timing, and why do they default? How do they handle multi-turn escrow and the working capital it locks? How do they choose partners after an attributable default? Behind them sits one requirement: any difference we report must be attributable to memory, to reputation, or to the model, not to a mix of the three.
 
-The first knob sweeps (spec, Decisions, M6 entries) showed why the order below matters. Fresh-session agents defaulted on 55% of contracts and their debriefs blamed thin notes and a tool budget spent re-reading state. The same agents kept awake for the whole game defaulted on 6% and produced ten times the welfare. Enforcement and penalty knobs that did nothing for forgetful agents mattered once agents could remember. So memory is the first confound to control, and evidence of what each agent saw is the first thing to capture.
+The first knob sweeps (spec, Decisions, M6 entries) showed why the order below matters. Fresh-session agents defaulted on 55% of contracts and their debriefs blamed thin notes and a tool budget spent re-reading state. The same agents kept awake for the whole game defaulted on 6% and gained ten times the net worth. Enforcement and penalty knobs that did nothing for forgetful agents mattered once agents could remember. So memory is the first confound to control, and evidence of what each agent saw is the first thing to capture.
 
 ## Working rules
 
