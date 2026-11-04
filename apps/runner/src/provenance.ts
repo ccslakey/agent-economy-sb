@@ -127,8 +127,8 @@ function byExperiment(runs: readonly ProvenanceOf[]): string {
  * One line per provenance field whose value is not the same across the runs, naming each value
  * and the runs that carry it, plus a line for any run played from a dirty source tree. Empty
  * when every run was played by the same software, prompt, docs, and model ids. A run with no
- * record shows as `unrecorded`, and a field no run recorded still prints, so a table over
- * pre-provenance runs never reads as a verified match.
+ * record shows as `unrecorded`, and a field that is `unrecorded` or `unknown` for every run
+ * still prints, so a table over pre-provenance runs never reads as a verified match.
  */
 export function provenanceDifferences(runs: readonly ProvenanceOf[]): string[] {
   const lines: string[] = [];
@@ -146,10 +146,11 @@ export function provenanceDifferences(runs: readonly ProvenanceOf[]): string[] {
                 .join(' ');
       values.set(value, [...(values.get(value) ?? []), r]);
     }
-    if (values.size < 2 && !values.has('unrecorded')) continue;
+    const only = values.size === 1 ? [...values.keys()][0] : undefined;
+    if (only !== undefined && only !== 'unrecorded' && only !== 'unknown') continue;
     lines.push(
-      values.size < 2
-        ? `${field} unrecorded (${byExperiment(runs)})`
+      only !== undefined
+        ? `${field} ${only} (${byExperiment(runs)})`
         : `${field} differs: ${[...values].map(([v, rs]) => `${v} (${byExperiment(rs)})`).join(' | ')}`,
     );
   }

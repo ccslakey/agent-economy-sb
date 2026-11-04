@@ -97,7 +97,14 @@ describe('provenance differences', () => {
     ).toEqual([]);
   });
 
-  it('still names a field that no run recorded, so old runs never read as a verified match', () => {
+  it('still names a field that no run recorded or knows, so old runs never read as a verified match', () => {
+    const backfilled = { ...recorded, source_revision: 'abc-inferred', cli_version: 'unknown' };
+    expect(
+      provenanceDifferences([
+        { experiment: 'old', provenance: backfilled },
+        { experiment: 'old', provenance: backfilled },
+      ]),
+    ).toEqual(['cli_version unknown (old ×2)']);
     expect(
       provenanceDifferences([
         { experiment: 'old', provenance: { resolved_models: { sonnet: ['claude-sonnet-4-5'] } } },
