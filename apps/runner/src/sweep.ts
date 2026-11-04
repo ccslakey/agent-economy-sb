@@ -38,29 +38,40 @@ const adminToken = process.env.ADMIN_TOKEN;
 if (adminToken === undefined) throw new Error('set ADMIN_TOKEN');
 const log = (line: string) => process.stdout.write(`${new Date().toISOString()} ${line}\n`);
 
-type Listing = { id: string; experiment_id: string; seed: number; status: string };
+type Listing = {
+  id: string;
+  experiment_id: string;
+  seed: number;
+  status: string;
+  created_at: string;
+};
 const admin = async <T>(route: string): Promise<T> => {
   const response = await fetch(`${api}${route}`, { headers: { 'x-admin-token': adminToken } });
   if (!response.ok) throw new Error(`GET ${route}: ${response.status} ${await response.text()}`);
   return (await response.json()) as T;
 };
 type CleanRun = ComparedRun & { id: string; experiment: string };
-/** Ended runs of the experiments that no bot had to finish. A run with a handoff is replayed, not compared. */
+/**
+ * Ended runs of the experiments that no bot had to finish. A run with a handoff is replayed, not
+ * compared, and when a variant and seed was played more than once only the latest run counts,
+ * so a replay supersedes the run it replaced instead of weighing twice.
+ */
 async function cleanRuns(experiments: readonly string[]): Promise<CleanRun[]> {
-  const listed = (await admin<{ runs: Listing[] }>('/admin/runs')).runs.flatMap((r) => {
+  const ended = (await admin<{ runs: Listing[] }>('/admin/runs')).runs.flatMap((r) => {
     const experiment = experiments.find((e) => r.experiment_id.startsWith(`${e}/`));
     return r.status === 'ended' && experiment !== undefined ? [{ ...r, experiment }] : [];
   });
   const withMetrics = await Promise.all(
-    listed.map(async (r) => ({
+    ended.map(async (r) => ({
       id: r.id,
       experiment: r.experiment,
       variant: r.experiment_id.slice(r.experiment.length + 1),
       seed: r.seed,
+      created_at: r.created_at,
       metrics: await admin<RunMetrics>(`/admin/runs/${r.id}/metrics`),
     })),
   );
-  return withMetrics.filter(
+  const clean = withMetrics.filter(
     (r) =>
       r.metrics.bot_handoffs === 0 ||
       (log(
@@ -68,6 +79,18 @@ async function cleanRuns(experiments: readonly string[]): Promise<CleanRun[]> {
       ),
       false),
   );
+  const latest = new Map<string, (typeof clean)[number]>();
+  for (const r of clean) {
+    const key = `${r.experiment}/${r.variant}:${r.seed}`;
+    const held = latest.get(key);
+    if (held === undefined || held.created_at < r.created_at) latest.set(key, r);
+  }
+  return clean.filter((r) => {
+    const kept = latest.get(`${r.experiment}/${r.variant}:${r.seed}`);
+    if (kept === r) return true;
+    log(`superseding ${r.variant} seed ${r.seed} (${r.id}) by ${kept?.id}, played later`);
+    return false;
+  });
 }
 
 /** The provenance lines for a table: what differs among the runs it read, or one line saying nothing does. */

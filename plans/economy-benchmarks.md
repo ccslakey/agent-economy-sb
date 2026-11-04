@@ -60,7 +60,7 @@ The focal sweep holds the environment fixed per model, but each model's runs lan
 
 - [x] **Cross-experiment tables.** `sweep.ts --focal a,b` and `--compare a,b` take several experiments, pair runs by seed and seat (or by seed and variant) across them, and print the mean paired difference with its seed count. The first experiment is the baseline. Running two models in one sweep file is not the fix, since `focalTable` groups by seat id and would pool models that share a seat.
 - [x] **Provenance check in the tables.** Any table over several experiments, or over runs whose provenance differs, prints one line per field that differs: source revision, CLI version, prompt digest, docs digest, resolved model ids. A `-dirty` revision anywhere is named too. The table still prints; the check names the difference rather than hiding the run.
-- [ ] **Backfill what the old runs can tell.** For runs created before provenance existed (the M4 runs, m6-knobs, m6-awake), record the resolved model ids from their traces and the source revision inferred from the run's start time against git history, marked `inferred` so no table mistakes it for a recorded value. Prompt and docs digests stay unknown for those runs, and `docs/experiments.md` says so where they are cited.
+- [x] **Backfill what the old runs can tell.** For runs created before provenance existed (the M4 runs, m6-knobs, m6-awake), record the resolved model ids from their traces and the source revision inferred from the run's start time against git history, marked `inferred` so no table mistakes it for a recorded value. Prompt and docs digests stay unknown for those runs, and `docs/experiments.md` says so where they are cited.
 
 Done when one command prints Sonnet against a second model, seat by seat, paired by seed, with a seed count and the provenance differences named, and the pre-provenance runs carry what their traces can prove.
 
@@ -74,8 +74,8 @@ Keep this block current at the end of each step.
 
 ```text
 Current step: 5, with step 6 planned
-Status: Code done for steps 4 and 5. Sweeps not yet run: configs/sweeps/m6-memory.yaml, m7-reputation.yaml, m7-focal.yaml. Step 6: cross-experiment tables and the provenance lines are built (sweep.ts --compare a,b / --focal a,b); the backfill of pre-provenance runs is not
+Status: Code done for steps 4, 5, and 6. Sweeps not yet run: configs/sweeps/m6-memory.yaml, m7-reputation.yaml, m7-focal.yaml. The pre-provenance runs in agent_economy_test are backfilled
 Branch: cross-experiment-tables
-Last completed: --compare and --focal over several experiments, paired by seed, with the provenance fields that differ printed under every table
-Next action: backfill resolved model ids and an inferred revision for the pre-provenance runs; run the three sweeps when the user says so, in the order memory, reputation, focal; record each table in the spec's Decisions with its caveats
+Last completed: step 6: tables across experiments, provenance lines under every table, latest-run dedupe per variant and seed, and the provenance backfill (backfill-provenance.ts)
+Next action: run the three sweeps when the user says so, in the order memory, reputation, focal; record each table in the spec's Decisions with its caveats
 ```

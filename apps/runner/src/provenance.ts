@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import type { Provenance } from '@agent-economy/schema';
+import type { Provenance, RunConfig } from '@agent-economy/schema';
 
 // What the runner records about itself at the start of every run: the git revision it runs
 // from, the CLI it spawns, and a digest of the prompt and the docs the agents read. Anything that
@@ -66,6 +66,38 @@ export async function collectProvenance(sources: ProvenanceSources): Promise<Pro
     prompt_variant: sources.promptVariant,
     prompt_sha256: digest([{ name: path.basename(sources.promptPath), text: prompt }]),
     docs_sha256: digest(docs),
+    recorded_at: (sources.now ?? (() => new Date()))().toISOString(),
+  };
+}
+
+/**
+ * Provenance for a run that was played before any was recorded, from what can still be proved:
+ * the last commit on the main line before the run started, marked `-inferred` since the runner
+ * may have been on a branch or a dirty tree; the prompt variant its LLM drivers were configured
+ * with; and `unknown` for the CLI version and the digests, which nothing recorded.
+ */
+export async function inferProvenance(sources: {
+  repoDir: string;
+  createdAt: string;
+  config: RunConfig;
+  now?: () => Date;
+}): Promise<Provenance> {
+  const commit = await ask(
+    'git',
+    ['rev-list', '-1', `--before=${sources.createdAt}`, 'main'],
+    sources.repoDir,
+  );
+  const variants = new Set(
+    sources.config.population.flatMap((p) =>
+      p.driver.kind === 'llm' ? [p.driver.prompt_variant] : [],
+    ),
+  );
+  return {
+    source_revision: commit === null || commit.length === 0 ? 'unknown' : `${commit}-inferred`,
+    cli_version: 'unknown',
+    prompt_variant: variants.size === 1 ? ([...variants][0] as string) : 'unknown',
+    prompt_sha256: 'unknown',
+    docs_sha256: 'unknown',
     recorded_at: (sources.now ?? (() => new Date()))().toISOString(),
   };
 }

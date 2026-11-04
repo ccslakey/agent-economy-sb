@@ -1,8 +1,12 @@
+import { execFile } from 'node:child_process';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { Provenance } from '@agent-economy/schema';
+import { promisify } from 'node:util';
+import { Provenance, RunConfig } from '@agent-economy/schema';
 import { describe, expect, it } from 'vitest';
-import { collectProvenance, digest, provenanceDifferences } from './provenance.ts';
+import { collectProvenance, digest, inferProvenance, provenanceDifferences } from './provenance.ts';
+
+const run = promisify(execFile);
 
 const repoDir = path.resolve(import.meta.dirname, '../../..');
 const docsDir = path.join(repoDir, 'docs/agent');
@@ -132,5 +136,61 @@ describe('provenance differences', () => {
       'resolved_models differs: sonnet=claude-sonnet-5-5 (sonnet ×2) | opus=claude-opus-5-5 (opus ×1) | sonnet=claude-sonnet-4-5 (old ×1)',
       'dirty source tree: opus ×1',
     ]);
+  });
+});
+
+describe('inferred provenance', () => {
+  it('names the last main-line commit before the run, marked inferred, and unknown for the rest', async () => {
+    const config = RunConfig.parse({
+      seed: 1,
+      experiment_id: 'old/baseline',
+      population: [
+        {
+          id: 'c01',
+          name: 'Ironreach',
+          role: 'miner',
+          driver: {
+            kind: 'llm',
+            model: 'sonnet',
+            effort: 'medium',
+            harness_version: 1,
+            prompt_variant: 'neutral',
+          },
+        },
+        {
+          id: 'c03',
+          name: 'Fellwood',
+          role: 'logger',
+          driver: { kind: 'bot', strategy: 'honest_trader' },
+        },
+      ],
+    });
+    const inferred = await inferProvenance({
+      repoDir,
+      createdAt: '2026-11-01T18:00:00.000Z',
+      config,
+      now: () => new Date('2026-11-04T10:00:00Z'),
+    });
+    expect(Provenance.parse(inferred)).toEqual(inferred);
+    expect(inferred.source_revision).toMatch(/^[0-9a-f]{40}-inferred$/);
+    const commit = inferred.source_revision.slice(0, 40);
+    const committed = (
+      await run('git', ['show', '-s', '--format=%cI', commit], { cwd: repoDir })
+    ).stdout.trim();
+    expect(new Date(committed).getTime()).toBeLessThanOrEqual(
+      new Date('2026-11-01T18:00:00.000Z').getTime(),
+    );
+    expect(inferred).toMatchObject({
+      cli_version: 'unknown',
+      prompt_variant: 'neutral',
+      prompt_sha256: 'unknown',
+      docs_sha256: 'unknown',
+      recorded_at: '2026-11-04T10:00:00.000Z',
+    });
+    const bots = { ...config, population: config.population.slice(1) };
+    expect(
+      (await inferProvenance({ repoDir, createdAt: '2026-11-01T18:00:00.000Z', config: bots }))
+        .prompt_variant,
+    ).toBe('unknown');
   });
 });

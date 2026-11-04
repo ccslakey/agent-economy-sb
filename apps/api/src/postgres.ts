@@ -329,6 +329,7 @@ export class PostgresStore implements Store {
         status: run.status,
         tokens: JSON.stringify(run.tokens),
         provenance: run.provenance === null ? null : JSON.stringify(run.provenance),
+        created_at: new Date(run.created_at),
       })
       .execute();
   }
@@ -430,6 +431,7 @@ function toRunRow(row: {
   status: string;
   tokens: unknown;
   provenance: unknown;
+  created_at: Date;
 }): RunRow {
   return {
     id: RunId.parse(row.id),
@@ -437,5 +439,6 @@ function toRunRow(row: {
     status: Status.parse(row.status),
     tokens: Tokens.parse(row.tokens),
     provenance: Provenance.nullable().parse(row.provenance ?? null),
+    created_at: row.created_at.toISOString(),
   };
 }
