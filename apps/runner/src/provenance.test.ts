@@ -93,6 +93,21 @@ describe('provenance differences', () => {
     ).toEqual([]);
   });
 
+  it('still names a field that no run recorded, so old runs never read as a verified match', () => {
+    expect(
+      provenanceDifferences([
+        { experiment: 'old', provenance: { resolved_models: { sonnet: ['claude-sonnet-4-5'] } } },
+        { experiment: 'old', provenance: { resolved_models: { sonnet: ['claude-sonnet-4-5'] } } },
+      ]),
+    ).toEqual([
+      'source_revision unrecorded (old ×2)',
+      'cli_version unrecorded (old ×2)',
+      'prompt_variant unrecorded (old ×2)',
+      'prompt_sha256 unrecorded (old ×2)',
+      'docs_sha256 unrecorded (old ×2)',
+    ]);
+  });
+
   it('names each field that differs, the runs on each side, and any dirty tree', () => {
     const lines = provenanceDifferences([
       { experiment: 'sonnet', provenance: recorded },
