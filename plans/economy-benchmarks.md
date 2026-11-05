@@ -81,5 +81,6 @@ Current step: 6
 Status: Code done for steps 4, 5, and 6, including the dashboard's Benchmarks page. Run: m6-memory (40 clean), m7-focal (70 clean, harness 1), m7-focal-sonnet (50 clean, harness 2, five seeds per seat plus ten for miner and logger), m7-reputation 9 of 30 (halted), m7-focal-qwen3-coder 5 all-bot games then halted (the 30B model's 23 GB plus a leaked test process filled swap; resume once memory is free), m7-focal-gemma4 running on Nov 5, 2026 (five seeds per seat)
 Branch: benchmark-page (on ollama-adapter, on cross-experiment-tables; PRs #49 and #50 open)
 Last completed: step 6: the Benchmarks page (scorecard, paired seeds, spillover, cost, provenance) over GET /admin/benchmarks, with the pairing and dedupe rules moved into packages/engine/src/benchmark.ts
+Note: run sweeps with Homebrew's Node 25 (PATH=/opt/homebrew/opt/node/bin:$PATH); the default Node 26.7 stalls fetch about 30 s on every reused idle connection, which made bot games take 26 minutes instead of 2 and slowed every LLM round on Nov 4 and 5, 2026
 Next action: finish the gemma4 sweep and read it against m7-focal-sonnet on the Benchmarks page; resume qwen3-coder (or gpt-oss, glm-flash) when memory allows; finish m7-reputation; write up m6-memory, m7-focal, and m7-reputation in docs/experiments.md and the spec's Decisions, in the order memory, reputation, focal
 ```
