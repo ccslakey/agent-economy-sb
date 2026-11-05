@@ -64,6 +64,8 @@ The focal sweep holds the environment fixed per model, but each model's runs lan
 
 - [x] **A second model.** `ollama/<name>` drivers play through a local Ollama's Anthropic-compatible endpoint with the same CLI and tools. The first smoke showed harness 1 sending about 50k tokens of the operator's plugins and skills in every session, nine minutes of prompt reading for a local model, so harness version 2 loads project settings only (1.5k tokens). One focal config per model under harness 2: `configs/sweeps/m7-focal-{sonnet,qwen3-coder,gpt-oss,gemma4,glm-flash}.yaml`.
 
+- [x] **Benchmark page.** The dashboard reads every focal experiment through `/admin/benchmarks` and shows the scorecard by condition and seat, the paired seeds behind a cell, chain spillover (others' score), cost and model time per run, and the provenance lines, pairing and deduping by the engine's `benchmark.ts`, which the sweep tables use too. Not built: an experiment history page (when each ran, clean runs against target, revision).
+
 Done when one command prints Sonnet against a second model, seat by seat, paired by seed, with a seed count and the provenance differences named, and the pre-provenance runs carry what their traces can prove.
 
 ## Deferred
@@ -75,9 +77,9 @@ Scenario fixtures with held-out cases, scripted trajectories as evaluator tests,
 Keep this block current at the end of each step.
 
 ```text
-Current step: 5, with step 6 planned
-Status: Code done for steps 4, 5, and 6. Run: m6-memory (40 clean), m7-focal (70 clean, harness 1), m7-reputation 9 of 30 (halted). Not run: the harness 2 focal sweeps per model. The pre-provenance runs in agent_economy_test are backfilled
-Branch: cross-experiment-tables
-Last completed: step 6: tables across experiments, provenance lines under every table, latest-run dedupe per variant and seed, and the provenance backfill (backfill-provenance.ts)
-Next action: finish m7-reputation, then the per-model focal sweeps (Sonnet under harness 2 first); write up m6-memory, m7-focal, and m7-reputation in docs/experiments.md and the spec's Decisions, in the order memory, reputation, focal; record each table in the spec's Decisions with its caveats
+Current step: 6
+Status: Code done for steps 4, 5, and 6, including the dashboard's Benchmarks page. Run: m6-memory (40 clean), m7-focal (70 clean, harness 1), m7-focal-sonnet (50 clean, harness 2, five seeds per seat plus ten for miner and logger), m7-reputation 9 of 30 (halted), m7-focal-qwen3-coder 5 all-bot games then halted (the 30B model's 23 GB plus a leaked test process filled swap; resume once memory is free), m7-focal-gemma4 running on Nov 5, 2026 (five seeds per seat)
+Branch: benchmark-page (on ollama-adapter, on cross-experiment-tables; PRs #49 and #50 open)
+Last completed: step 6: the Benchmarks page (scorecard, paired seeds, spillover, cost, provenance) over GET /admin/benchmarks, with the pairing and dedupe rules moved into packages/engine/src/benchmark.ts
+Next action: finish the gemma4 sweep and read it against m7-focal-sonnet on the Benchmarks page; resume qwen3-coder (or gpt-oss, glm-flash) when memory allows; finish m7-reputation; write up m6-memory, m7-focal, and m7-reputation in docs/experiments.md and the spec's Decisions, in the order memory, reputation, focal
 ```

@@ -5,7 +5,7 @@
 #   ADMIN_TOKEN=... node apps/runner/src/sweep.ts --api http://localhost:3010 --sweep configs/sweeps/m7-focal-gemma4.yaml --concurrency 1
 #   ADMIN_TOKEN=... node apps/runner/src/sweep.ts --api http://localhost:3010 --focal m7-focal-sonnet,m7-focal-gemma4
 experiment_id: m7-focal-gemma4
-seeds: [104, 105, 106, 107, 108, 109, 110, 111, 112, 113]
+seeds: [104, 105, 106, 107, 108]
 base:
   population:
     - { id: c01, name: Ironreach, role: miner, driver: { kind: bot, strategy: honest_trader } }
