@@ -499,6 +499,73 @@ fieldset.pills {
   gap: 2px;
 }
 
+/* Benchmarks */
+
+table.data.scorecard td {
+  padding: 4px;
+}
+table.data.scorecard th {
+  vertical-align: bottom;
+}
+.score-cell {
+  font: inherit;
+  width: 100%;
+  min-width: 110px;
+  min-height: 56px;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  cursor: pointer;
+}
+.score-cell:disabled {
+  cursor: default;
+  color: var(--muted);
+}
+.score-cell[aria-pressed="true"] {
+  outline: 2px solid var(--fg);
+  outline-offset: 1px;
+}
+.score-cell .mono {
+  font-size: 18px;
+}
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  vertical-align: middle;
+}
+.panels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.panel {
+  flex: 1 1 240px;
+  max-width: 360px;
+}
+.prov {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+.link {
+  font: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+}
+
 /* Notable moments */
 
 .moment {

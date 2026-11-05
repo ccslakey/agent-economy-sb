@@ -9,6 +9,7 @@ import {
   saveToken,
 } from './api.ts';
 import { byTurn, type EdgeFilter, type Log, lastTurn, splitLog, stateAt } from './derive.ts';
+import { Benchmarks } from './views/Benchmarks.tsx';
 import { Company } from './views/Company.tsx';
 import { Compare } from './views/Compare.tsx';
 import { Contracts } from './views/Contracts.tsx';
@@ -21,8 +22,11 @@ const PAGES = [
   { id: 'network', label: 'Trade network' },
   { id: 'companies', label: 'Companies' },
   { id: 'compare', label: 'Compare runs' },
+  { id: 'benchmarks', label: 'Benchmarks' },
 ] as const;
 type Page = (typeof PAGES)[number]['id'];
+/** Pages over every run, open with no run selected. */
+const GLOBAL: readonly Page[] = ['compare', 'benchmarks'];
 
 const runLabel = (r: RunListing) =>
   `${r.experiment_id} · seed ${r.seed} · ${r.status}${r.turn === null ? '' : ` · turn ${r.turn}`}`;
@@ -112,7 +116,7 @@ export function App() {
     setPage('companies');
   };
   const ready = runId !== null && log !== null && state !== null && turn !== null;
-  const shown: Page = ready ? page : 'compare';
+  const shown: Page = ready || GLOBAL.includes(page) ? page : 'compare';
 
   return (
     <>
@@ -128,7 +132,7 @@ export function App() {
                 key={p.id}
                 type="button"
                 aria-current={shown === p.id ? 'page' : undefined}
-                disabled={!ready && p.id !== 'compare'}
+                disabled={!ready && !GLOBAL.includes(p.id)}
                 onClick={() => setPage(p.id)}
               >
                 {p.label}
@@ -210,6 +214,9 @@ export function App() {
         {runs !== null && runId !== null && log === null && <p className="muted">Loading run…</p>}
         {runs !== null && shown === 'compare' && (
           <Compare runs={runs} token={token} onSelect={openRun} />
+        )}
+        {runs !== null && shown === 'benchmarks' && (
+          <Benchmarks runs={runs} token={token} onSelect={openRun} />
         )}
         {ready && run !== undefined && shown === 'overview' && (
           <Overview log={log} state={state} turn={turn} run={run} token={token} />
