@@ -1,0 +1,44 @@
+# Step 6 focal company per model: gpt-oss:20b through the local Ollama. Same seats, seeds, and scripted population as
+# m7-focal, under harness version 2 (project settings only, so the user's plugins stay out of the
+# prompt), so every model's seat table pairs by seed against the same bots and against each other.
+# A local model serves one session at a time; keep --concurrency 1 for the ollama/ models.
+#   ADMIN_TOKEN=... node apps/runner/src/sweep.ts --api http://localhost:3010 --sweep configs/sweeps/m7-focal-gpt-oss.yaml --concurrency 1
+#   ADMIN_TOKEN=... node apps/runner/src/sweep.ts --api http://localhost:3010 --focal m7-focal-sonnet,m7-focal-gpt-oss
+experiment_id: m7-focal-gpt-oss
+seeds: [104, 105, 106, 107, 108, 109, 110, 111, 112, 113]
+base:
+  population:
+    - { id: c01, name: Ironreach, role: miner, driver: { kind: bot, strategy: honest_trader } }
+    - { id: c03, name: Fellwood, role: logger, driver: { kind: bot, strategy: honest_trader } }
+    - { id: c05, name: Emberworks, role: smelter, driver: { kind: bot, strategy: honest_trader } }
+    - { id: c07, name: Birchline Mills, role: mill, driver: { kind: bot, strategy: honest_trader } }
+    - { id: c09, name: Anvilgate, role: toolmaker, driver: { kind: bot, strategy: honest_trader } }
+    - {
+        id: c11,
+        name: Hearthstead,
+        role: furniture_maker,
+        driver: { kind: bot, strategy: honest_trader },
+      }
+  knobs:
+    horizon: { kind: fixed, last_turn: 15 }
+    context_persistence: persistent
+  limits:
+    round_wall_clock_seconds: 900
+    max_concurrent_sessions: 1
+variants:
+  - { name: bots }
+  - name: llm-miner
+    drivers:
+      c01:
+        &sonnet {
+          kind: llm,
+          model: ollama/gpt-oss:20b,
+          effort: medium,
+          harness_version: 2,
+          prompt_variant: neutral,
+        }
+  - { name: llm-logger, drivers: { c03: *sonnet } }
+  - { name: llm-smelter, drivers: { c05: *sonnet } }
+  - { name: llm-mill, drivers: { c07: *sonnet } }
+  - { name: llm-toolmaker, drivers: { c09: *sonnet } }
+  - { name: llm-furniture-maker, drivers: { c11: *sonnet } }

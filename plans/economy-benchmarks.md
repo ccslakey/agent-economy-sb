@@ -62,6 +62,8 @@ The focal sweep holds the environment fixed per model, but each model's runs lan
 - [x] **Provenance check in the tables.** Any table over several experiments, or over runs whose provenance differs, prints one line per field that differs: source revision, CLI version, prompt digest, docs digest, resolved model ids. A `-dirty` revision anywhere is named too. The table still prints; the check names the difference rather than hiding the run.
 - [x] **Backfill what the old runs can tell.** For runs created before provenance existed (the M4 runs, m6-knobs, m6-awake), record the resolved model ids from their traces and the source revision inferred from the run's start time against git history, marked `inferred` so no table mistakes it for a recorded value. Prompt and docs digests stay unknown for those runs, and `docs/experiments.md` says so where they are cited.
 
+- [x] **A second model.** `ollama/<name>` drivers play through a local Ollama's Anthropic-compatible endpoint with the same CLI and tools. The first smoke showed harness 1 sending about 50k tokens of the operator's plugins and skills in every session, nine minutes of prompt reading for a local model, so harness version 2 loads project settings only (1.5k tokens). One focal config per model under harness 2: `configs/sweeps/m7-focal-{sonnet,qwen3-coder,gpt-oss,gemma4,glm-flash}.yaml`.
+
 Done when one command prints Sonnet against a second model, seat by seat, paired by seed, with a seed count and the provenance differences named, and the pre-provenance runs carry what their traces can prove.
 
 ## Deferred
@@ -74,8 +76,8 @@ Keep this block current at the end of each step.
 
 ```text
 Current step: 5, with step 6 planned
-Status: Code done for steps 4, 5, and 6. Sweeps not yet run: configs/sweeps/m6-memory.yaml, m7-reputation.yaml, m7-focal.yaml. The pre-provenance runs in agent_economy_test are backfilled
+Status: Code done for steps 4, 5, and 6. Run: m6-memory (40 clean), m7-focal (70 clean, harness 1), m7-reputation 9 of 30 (halted). Not run: the harness 2 focal sweeps per model. The pre-provenance runs in agent_economy_test are backfilled
 Branch: cross-experiment-tables
 Last completed: step 6: tables across experiments, provenance lines under every table, latest-run dedupe per variant and seed, and the provenance backfill (backfill-provenance.ts)
-Next action: run the three sweeps when the user says so, in the order memory, reputation, focal; record each table in the spec's Decisions with its caveats
+Next action: finish m7-reputation, then the per-model focal sweeps (Sonnet under harness 2 first); write up m6-memory, m7-focal, and m7-reputation in docs/experiments.md and the spec's Decisions, in the order memory, reputation, focal; record each table in the spec's Decisions with its caveats
 ```

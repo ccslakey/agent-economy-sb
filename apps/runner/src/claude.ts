@@ -4,12 +4,20 @@ import { z } from 'zod';
 // The Claude Code adapter: one headless session per call. Spawns `claude -p` with only the game
 // MCP tools, reads the JSON result, and classifies failures so the runner can pause on quota,
 // retry on transient errors, and hand a company to a bot when nothing works.
+//
+// A model named `ollama/<name>` is served by a local Ollama through its Anthropic-compatible
+// endpoint, so the same CLI, prompt, and tools play it; only the base URL and the model name
+// change. Harness version 2 loads project settings only, so the user's own plugins, skills, and
+// global instructions stay out of the system prompt: harness 1 carried about 50k tokens of them,
+// which a local model reads at a hundred tokens a second.
 
 export type SessionRequest = {
   prompt: string;
   systemPrompt: string;
   model: string;
   effort: string;
+  /** The config's `harness_version`: which set of CLI arguments plays the session. */
+  harnessVersion: number;
   mcpConfigPath: string;
   /** A session id to continue, for the per_turn and persistent context knobs. */
   resume?: string;
@@ -64,12 +72,29 @@ export function classify(text: string): 'quota' | 'error' {
   return QUOTA.test(text) ? 'quota' : 'error';
 }
 
+const OLLAMA_PREFIX = 'ollama/';
+
+/** The environment the CLI needs for the model: a local Ollama for `ollama/` names, the process's own otherwise. */
+export function sessionEnv(model: string, base: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  // A persistent session blocks in wait_for_round for as long as the other companies take.
+  const env = { ...base, MCP_TOOL_TIMEOUT: base.MCP_TOOL_TIMEOUT ?? '3600000' };
+  if (!model.startsWith(OLLAMA_PREFIX)) return env;
+  return {
+    ...env,
+    ANTHROPIC_BASE_URL: base.OLLAMA_HOST ?? 'http://localhost:11434',
+    ANTHROPIC_AUTH_TOKEN: 'ollama',
+    ANTHROPIC_API_KEY: '',
+  };
+}
+
 export function cliArgs(request: SessionRequest): string[] {
   return [
     '-p',
     request.prompt,
     '--model',
-    request.model,
+    request.model.startsWith(OLLAMA_PREFIX)
+      ? request.model.slice(OLLAMA_PREFIX.length)
+      : request.model,
     '--effort',
     request.effort,
     '--append-system-prompt',
@@ -85,6 +110,7 @@ export function cliArgs(request: SessionRequest): string[] {
     'dontAsk',
     '--output-format',
     'json',
+    ...(request.harnessVersion >= 2 ? ['--setting-sources', 'project'] : []),
     ...(request.resume === undefined ? [] : ['--resume', request.resume]),
     ...(request.sessionId === undefined ? [] : ['--session-id', request.sessionId]),
   ];
@@ -142,8 +168,7 @@ export const claudeSpawner: Spawner = (request) =>
     const child = spawn('claude', cliArgs(request), {
       cwd: request.cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
-      // A persistent session blocks in wait_for_round for as long as the other companies take.
-      env: { ...process.env, MCP_TOOL_TIMEOUT: process.env.MCP_TOOL_TIMEOUT ?? '3600000' },
+      env: sessionEnv(request.model, process.env),
     });
     let stdout = '';
     let stderr = '';
