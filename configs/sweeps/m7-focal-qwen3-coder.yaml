@@ -1,11 +1,11 @@
 # Step 6 focal company per model: qwen3-coder:30b through the local Ollama. Same seats, seeds, and scripted population as
-# m7-focal, under harness version 2 (project settings only, so the user's plugins stay out of the
+# m7-focal on the first five seeds, under harness version 2 (project settings only, so the user's plugins stay out of the
 # prompt), so every model's seat table pairs by seed against the same bots and against each other.
 # A local model serves one session at a time; keep --concurrency 1 for the ollama/ models.
 #   ADMIN_TOKEN=... node apps/runner/src/sweep.ts --api http://localhost:3010 --sweep configs/sweeps/m7-focal-qwen3-coder.yaml --concurrency 1
 #   ADMIN_TOKEN=... node apps/runner/src/sweep.ts --api http://localhost:3010 --focal m7-focal-sonnet,m7-focal-qwen3-coder
 experiment_id: m7-focal-qwen3-coder
-seeds: [104, 105, 106, 107, 108, 109, 110, 111, 112, 113]
+seeds: [104, 105, 106, 107, 108]
 base:
   population:
     - { id: c01, name: Ironreach, role: miner, driver: { kind: bot, strategy: honest_trader } }
