@@ -1,56 +1,14 @@
-import { contractValue, partyOf, reputationOf, scoreOf } from '@agent-economy/engine';
+import { focalSeat, type SeatOutcome, seatOutcome } from '@agent-economy/engine';
 import {
   type CompanyId,
   type PopulationEntry,
   ROLE_NAMES,
-  type RunConfig,
   type RunState,
 } from '@agent-economy/schema';
 
 // The focal-company table: one LLM company among scripted bots, measured in its seat against the
 // bot that held the same seat in the all-bot run with the same seed. The rest of the chain is
 // the same scripted population in both, so the paired difference is the LLM's effect in that role.
-
-export type SeatOutcome = {
-  score: number;
-  completed: number;
-  defaulted: number;
-  /** Reference value of every completed contract the seat was party to, both sides. */
-  trade_value: number;
-  bankrupt: number;
-  /** Final scores of every other company, summed: what the seat did to the chain around it. */
-  others_score: number;
-};
-
-export function seatOutcome(state: RunState, seat: CompanyId): SeatOutcome {
-  const company = state.companies[seat];
-  if (company === undefined) throw new Error(`no company ${seat} in run ${state.run_id}`);
-  const rep = reputationOf(state, company);
-  let tradeValue = 0;
-  for (const contract of Object.values(state.contracts)) {
-    if (contract.status.status !== 'completed' || partyOf(contract, seat) === null) continue;
-    tradeValue += contractValue(state, contract.obligations);
-  }
-  return {
-    score: scoreOf(state, company),
-    completed: rep.completed,
-    defaulted: rep.defaulted,
-    trade_value: tradeValue,
-    bankrupt: company.standing.kind === 'bankrupt' ? 1 : 0,
-    others_score: Object.values(state.companies)
-      .filter((c) => c.id !== seat)
-      .reduce((sum, c) => sum + scoreOf(state, c), 0),
-  };
-}
-
-/** The one LLM company of a run, or null when every seat is scripted. A run with several has no focal seat. */
-export function focalSeat(config: RunConfig): PopulationEntry | null {
-  const llm = config.population.filter((p) => p.driver.kind === 'llm');
-  if (llm.length > 1) {
-    throw new Error(`${config.experiment_id} has ${llm.length} LLM companies, not one focal seat`);
-  }
-  return llm[0] ?? null;
-}
 
 export type FocalRun = { variant: string; seed: number; state: RunState };
 
