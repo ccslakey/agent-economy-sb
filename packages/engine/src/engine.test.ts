@@ -765,11 +765,6 @@ describe('contracts', () => {
 });
 
 describe('trade layer', () => {
-  const contract = (g: ReturnType<typeof game>, id: string) => {
-    const k = g.state().contracts[ContractId.parse(id)];
-    if (k === undefined) throw new Error(`no contract ${id}`);
-    return k;
-  };
   const resolve = (g: ReturnType<typeof game>) => g.run({ kind: 'resolve_round' });
   const codes = (events: Event[]) =>
     events.map((e) => (e.type === 'action_rejected' ? e.payload.code : e.type));

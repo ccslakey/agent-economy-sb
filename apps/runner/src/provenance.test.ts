@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
-import { readdir, readFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { Provenance, RunConfig } from '@agent-economy/schema';
@@ -77,48 +78,73 @@ describe('provenance', () => {
   });
 });
 
+/**
+ * A fresh repository whose `main` holds one commit per date given, so the test owns the history
+ * it asserts over instead of leaning on this checkout, which CI clones shallow and without `main`.
+ */
+async function repoWithCommitsOn(
+  dates: readonly string[],
+): Promise<{ dir: string; shas: string[] }> {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'provenance-'));
+  const git = async (args: string[], date?: string) =>
+    (
+      await run('git', ['-c', 'user.name=test', '-c', 'user.email=test@example.com', ...args], {
+        cwd: dir,
+        env: { ...process.env, GIT_AUTHOR_DATE: date ?? '', GIT_COMMITTER_DATE: date ?? '' },
+      })
+    ).stdout.trim();
+  await git(['init', '-q', '-b', 'main']);
+  const shas: string[] = [];
+  for (const [i, date] of dates.entries()) {
+    await writeFile(path.join(dir, 'note.txt'), `${i}\n`);
+    await git(['add', 'note.txt']);
+    await git(['-c', 'commit.gpgsign=false', 'commit', '-q', '-m', `commit ${i}`], date);
+    shas.push(await git(['rev-parse', 'HEAD']));
+  }
+  return { dir, shas };
+}
+
 describe('inferred provenance', () => {
+  const config = RunConfig.parse({
+    seed: 1,
+    experiment_id: 'old/baseline',
+    population: [
+      {
+        id: 'c01',
+        name: 'Ironreach',
+        role: 'miner',
+        driver: {
+          kind: 'llm',
+          model: 'sonnet',
+          effort: 'medium',
+          harness_version: 1,
+          prompt_variant: 'neutral',
+        },
+      },
+      {
+        id: 'c03',
+        name: 'Fellwood',
+        role: 'logger',
+        driver: { kind: 'bot', strategy: 'honest_trader' },
+      },
+    ],
+  });
+
   it('names the last main-line commit before the run, marked inferred, and unknown for the rest', async () => {
-    const config = RunConfig.parse({
-      seed: 1,
-      experiment_id: 'old/baseline',
-      population: [
-        {
-          id: 'c01',
-          name: 'Ironreach',
-          role: 'miner',
-          driver: {
-            kind: 'llm',
-            model: 'sonnet',
-            effort: 'medium',
-            harness_version: 1,
-            prompt_variant: 'neutral',
-          },
-        },
-        {
-          id: 'c03',
-          name: 'Fellwood',
-          role: 'logger',
-          driver: { kind: 'bot', strategy: 'honest_trader' },
-        },
-      ],
-    });
+    const { dir, shas } = await repoWithCommitsOn([
+      '2026-10-30T12:00:00Z',
+      '2026-11-01T09:00:00Z',
+      '2026-11-02T09:00:00Z',
+    ]);
     const inferred = await inferProvenance({
-      repoDir,
+      repoDir: dir,
       createdAt: '2026-11-01T18:00:00.000Z',
       config,
       now: () => new Date('2026-11-04T10:00:00Z'),
     });
     expect(Provenance.parse(inferred)).toEqual(inferred);
-    expect(inferred.source_revision).toMatch(/^[0-9a-f]{40}-inferred$/);
-    const commit = inferred.source_revision.slice(0, 40);
-    const committed = (
-      await run('git', ['show', '-s', '--format=%cI', commit], { cwd: repoDir })
-    ).stdout.trim();
-    expect(new Date(committed).getTime()).toBeLessThanOrEqual(
-      new Date('2026-11-01T18:00:00.000Z').getTime(),
-    );
-    expect(inferred).toMatchObject({
+    expect(inferred).toEqual({
+      source_revision: `${shas[1]}-inferred`,
       cli_version: 'unknown',
       prompt_variant: 'neutral',
       prompt_sha256: 'unknown',
@@ -127,8 +153,18 @@ describe('inferred provenance', () => {
     });
     const bots = { ...config, population: config.population.slice(1) };
     expect(
-      (await inferProvenance({ repoDir, createdAt: '2026-11-01T18:00:00.000Z', config: bots }))
+      (await inferProvenance({ repoDir: dir, createdAt: '2026-11-01T18:00:00.000Z', config: bots }))
         .prompt_variant,
     ).toBe('unknown');
+  });
+
+  it('records an unknown revision where there is no main line to ask', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'provenance-'));
+    const inferred = await inferProvenance({
+      repoDir: dir,
+      createdAt: '2026-11-01T18:00:00.000Z',
+      config,
+    });
+    expect(inferred.source_revision).toBe('unknown');
   });
 });

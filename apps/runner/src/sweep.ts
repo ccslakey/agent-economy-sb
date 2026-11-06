@@ -186,11 +186,11 @@ if (compareOnly !== undefined) {
     docsDir: path.resolve(import.meta.dirname, '../../../docs/agent'),
   });
   const done = await cleanRuns([sweep.experiment_id]);
-  const queue: SweepRun[] = expandSweep(sweep).filter(
-    (r) =>
-      !done.some((d) => d.variant === r.variant && d.seed === r.seed) ||
-      (log(`skipping ${r.config.experiment_id} seed ${r.seed}, already ended`), false),
-  );
+  const queue: SweepRun[] = expandSweep(sweep).filter((r) => {
+    const ended = done.some((d) => d.variant === r.variant && d.seed === r.seed);
+    if (ended) log(`skipping ${r.config.experiment_id} seed ${r.seed}, already ended`);
+    return !ended;
+  });
   log(`${queue.length} runs to play, ${concurrency} at a time`);
   const worker = async (): Promise<void> => {
     for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
