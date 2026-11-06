@@ -1,4 +1,4 @@
-import type { RunMetrics } from '@agent-economy/engine';
+import type { RunMetrics, RunProvenance, SeatOutcome } from '@agent-economy/engine';
 import { Event, type Knobs, type RunState } from '@agent-economy/schema';
 
 // Admin calls. The token lives in localStorage so a reload keeps it; nothing else is stored.
@@ -113,3 +113,30 @@ export const fetchTraces = (token: string, runId: string, company: string) =>
   admin<{ traces: Trace[] }>(token, `/admin/runs/${runId}/traces?company=${company}`).then(
     (r) => r.traces,
   );
+
+/** One ended run as the benchmark page reads it: who held each seat and how every seat came out. */
+export type BenchmarkRun = {
+  id: string;
+  experiment: string;
+  variant: string;
+  seed: number;
+  created_at: string;
+  llm_seats: {
+    id: string;
+    role: string;
+    name: string;
+    model: string;
+    effort: string;
+    harness_version: number;
+  }[];
+  seats: Record<string, SeatOutcome>;
+  bot_handoffs: number;
+  cost: CostBucket;
+  provenance: RunProvenance;
+};
+
+export const fetchBenchmarks = (token: string, experiments: readonly string[]) =>
+  admin<{ runs: BenchmarkRun[] }>(
+    token,
+    `/admin/benchmarks?experiments=${encodeURIComponent(experiments.join(','))}`,
+  ).then((r) => r.runs);

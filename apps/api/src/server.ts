@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fold, reputationOf, runMetrics, scoreOf } from '@agent-economy/engine';
+import { fold, reputationOf, runMetrics, scoreOf, seatOutcome } from '@agent-economy/engine';
 import {
   type ActionError,
   BotStrategy,
@@ -624,6 +624,57 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
     return runMetrics(started, rest);
   });
 
+  // Every ended run of the experiments named, read for the benchmark page: which seat an LLM
+  // holds, every seat's outcome, what the run cost, and its provenance. One request per page
+  // rather than one per run, because folding two hundred logs in the browser is the slow part.
+  app.get<{ Querystring: { experiments?: string } }>(
+    '/admin/benchmarks',
+    async (request, reply) => {
+      if (!(await admin(request, reply))) return;
+      const experiments = (request.query.experiments ?? '').split(',').filter((e) => e !== '');
+      if (experiments.length === 0) {
+        return reply.code(400).send({ code: 'BAD_REQUEST', reason: 'pass ?experiments=a,b' });
+      }
+      const runs = [];
+      for (const run of await options.store.listRuns()) {
+        const experiment = experiments.find((e) => run.config.experiment_id.startsWith(`${e}/`));
+        if (run.status !== 'ended' || experiment === undefined) continue;
+        const [started, ...rest] = await options.store.events(run.id);
+        if (started?.type !== 'run_started') continue;
+        const state = fold(started, rest);
+        const traces = await options.store.listTraces(run.id);
+        runs.push({
+          id: run.id,
+          experiment,
+          variant: run.config.experiment_id.slice(experiment.length + 1),
+          seed: run.config.seed,
+          created_at: run.created_at,
+          llm_seats: run.config.population.flatMap((p) =>
+            p.driver.kind === 'llm'
+              ? [
+                  {
+                    id: p.id,
+                    role: p.role,
+                    name: p.name,
+                    model: p.driver.model,
+                    effort: p.driver.effort,
+                    harness_version: p.driver.harness_version,
+                  },
+                ]
+              : [],
+          ),
+          seats: Object.fromEntries(
+            Object.values(state.companies).map((c) => [c.id, seatOutcome(state, c.id)]),
+          ),
+          bot_handoffs: rest.filter((e) => e.type === 'agent_replaced_by_bot').length,
+          cost: traceTotals(traces),
+          provenance: { ...run.provenance, resolved_models: resolvedModels(traces) },
+        });
+      }
+      return { runs };
+    },
+  );
+
   // The end-of-run report: scores, each company's last plan and thoughts, its notes, every bug
   // report it filed, and its farming answer. Built from the store so it works for ended runs.
   app.get<{ Params: { id: string } }>('/admin/runs/:id/report', async (request, reply) => {
@@ -687,6 +738,19 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
 }
 
 /** For each model the runner asked for, the model ids the CLI reports under `modelUsage` in its results. */
+/** Sessions, tokens, nominal cost, and wall-clock time of a run's sessions, summed. */
+export function traceTotals(traces: readonly TraceRow[]) {
+  const total = { sessions: 0, tokens_in: 0, tokens_out: 0, cost_usd: 0, duration_ms: 0 };
+  for (const t of traces) {
+    total.sessions += 1;
+    total.tokens_in += t.tokens_in;
+    total.tokens_out += t.tokens_out;
+    total.cost_usd += t.cost_usd;
+    total.duration_ms += t.duration_ms;
+  }
+  return total;
+}
+
 export function resolvedModels(traces: readonly TraceRow[]): Record<string, string[]> {
   const out: Record<string, Set<string>> = {};
   for (const t of traces) {

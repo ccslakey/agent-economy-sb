@@ -809,3 +809,61 @@ describe('agent routes', () => {
     ]);
   });
 });
+
+describe('benchmarks', () => {
+  it('serves every seat outcome, the LLM seat, the cost, and the provenance of each ended run', async () => {
+    const llm = {
+      kind: 'llm',
+      model: 'ollama/gemma4:latest',
+      effort: 'medium',
+      harness_version: 2,
+      prompt_variant: 'neutral',
+    };
+    const run = await startRun(new MemoryStore(), frozenClock(), {
+      ...config,
+      experiment_id: 'bench-test/llm-miner',
+      population: [{ ...config.population[0], driver: llm }, config.population[1]],
+      knobs: { ...config.knobs, context_persistence: 'persistent' },
+    });
+    for (let i = 0; i < 6; i++) {
+      run.clock.fire();
+      await new Promise((r) => setImmediate(r));
+    }
+    // A second run of another experiment, still running, is not served.
+    await api().inject({
+      method: 'POST',
+      url: '/admin/runs',
+      headers: { 'x-admin-token': 'admin' },
+      payload: { ...config, experiment_id: 'other/bots' },
+    });
+    const served = await api().inject({
+      method: 'GET',
+      url: '/admin/benchmarks?experiments=bench-test,other',
+      headers: { 'x-admin-token': 'admin' },
+    });
+    expect(served.statusCode).toBe(200);
+    const { runs } = served.json() as { runs: Record<string, unknown>[] };
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({
+      id: run.run_id,
+      experiment: 'bench-test',
+      variant: 'llm-miner',
+      seed: 3,
+      llm_seats: [{ id: 'c01', role: 'miner', model: 'ollama/gemma4:latest', harness_version: 2 }],
+      bot_handoffs: 0,
+      cost: { sessions: 0, tokens_in: 0, duration_ms: 0 },
+      provenance: { resolved_models: {} },
+    });
+    const seats = runs[0]?.seats as Record<string, { score: number; others_score: number }>;
+    expect(Object.keys(seats).sort()).toEqual(['c01', 'c05']);
+    expect(seats.c01?.others_score).toBe(seats.c05?.score);
+    expect(typeof runs[0]?.created_at).toBe('string');
+
+    const bare = await api().inject({
+      method: 'GET',
+      url: '/admin/benchmarks',
+      headers: { 'x-admin-token': 'admin' },
+    });
+    expect(bare.statusCode).toBe(400);
+  });
+});

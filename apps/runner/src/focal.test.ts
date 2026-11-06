@@ -1,7 +1,7 @@
-import { reputationOf, scoreOf } from '@agent-economy/engine';
+import { focalSeat, reputationOf, scoreOf, seatOutcome } from '@agent-economy/engine';
 import { CompanyId, RunConfig, type RunState } from '@agent-economy/schema';
 import { describe, expect, it } from 'vitest';
-import { focalSeat, focalTable, seatOutcome } from './focal.ts';
+import { focalTable } from './focal.ts';
 import { playBots } from './play.ts';
 
 // The focal table over bot-played games: the all-bot run is real, and the "LLM" run is the same

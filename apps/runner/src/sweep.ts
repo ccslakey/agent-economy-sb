@@ -2,16 +2,24 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { fold, type RunMetrics } from '@agent-economy/engine';
+import {
+  focalSeat,
+  fold,
+  latestClean,
+  provenanceDifferences,
+  type RunMetrics,
+  type RunProvenance,
+  seatOutcome,
+} from '@agent-economy/engine';
 import { type Event, expandSweep, ROLE_NAMES, Sweep, type SweepRun } from '@agent-economy/schema';
 import { parse as parseYaml } from 'yaml';
 import { acrossTable } from './across.ts';
 import { claudeSpawner } from './claude.ts';
 import { type ComparedRun, compareRuns, flatten } from './compare.ts';
 import { createRun, drive, recordProvenance } from './drive.ts';
-import { focalSeat, focalTable, seatOutcome } from './focal.ts';
+import { focalTable } from './focal.ts';
 import { fetchRetrying } from './http.ts';
-import { collectProvenance, provenanceDifferences, type RunProvenance } from './provenance.ts';
+import { collectProvenance } from './provenance.ts';
 
 // Run a sweep: every variant times every seed, a few runs at a time, then the comparison table.
 // Rerunning a sweep skips any variant and seed that already has an ended run, so an interrupted
@@ -74,23 +82,13 @@ async function cleanRuns(experiments: readonly string[]): Promise<CleanRun[]> {
       metrics: await admin<RunMetrics>(`/admin/runs/${r.id}/metrics`),
     })),
   );
-  const clean = withMetrics.filter((r) => {
-    if (r.metrics.bot_handoffs === 0) return true;
-    log(`ignoring ${r.variant} seed ${r.seed} (${r.id}): ${r.metrics.bot_handoffs} bot handoffs`);
-    return false;
-  });
-  const latest = new Map<string, (typeof clean)[number]>();
-  for (const r of clean) {
-    const key = `${r.experiment}/${r.variant}:${r.seed}`;
-    const held = latest.get(key);
-    if (held === undefined || held.created_at < r.created_at) latest.set(key, r);
+  const { kept, dropped } = latestClean(
+    withMetrics.map((r) => ({ ...r, bot_handoffs: r.metrics.bot_handoffs })),
+  );
+  for (const { run, reason } of dropped) {
+    log(`ignoring ${run.variant} seed ${run.seed} (${run.id}): ${reason}`);
   }
-  return clean.filter((r) => {
-    const kept = latest.get(`${r.experiment}/${r.variant}:${r.seed}`);
-    if (kept === r) return true;
-    log(`superseding ${r.variant} seed ${r.seed} (${r.id}) by ${kept?.id}, played later`);
-    return false;
-  });
+  return kept;
 }
 
 /** The provenance lines for a table: what differs among the runs it read, or one line saying nothing does. */

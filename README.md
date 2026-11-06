@@ -66,6 +66,8 @@ The runner creates the run, plays every round (LLM companies through `claude -p`
 
 The dashboard's overview lists each run's notable moments (default waves, bankruptcies, shocks and the price reaction, lead changes, stalled trade), detected from the log by `packages/engine/src/moments.ts` with every claim citing event ids.
 
+The dashboard's Benchmarks page reads every focal experiment (one LLM seat among bots) through `/admin/benchmarks?experiments=a,b`: a scorecard of each model's paired difference against the bot by seat, the seeds behind a cell, chain spillover, cost per run, and the provenance that differs among the runs counted. It pairs and dedupes by the same rules as `sweep.ts --focal`.
+
 ## Start the API
 
 ```sh
