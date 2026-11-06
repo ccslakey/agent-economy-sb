@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import type { Provenance } from '@agent-economy/schema';
+import type { Provenance, RunConfig } from '@agent-economy/schema';
 
 // What the runner records about itself at the start of every run: the git revision it runs
 // from, the CLI it spawns, and a digest of the prompt and the docs the agents read. Anything that
@@ -68,4 +68,93 @@ export async function collectProvenance(sources: ProvenanceSources): Promise<Pro
     docs_sha256: digest(docs),
     recorded_at: (sources.now ?? (() => new Date()))().toISOString(),
   };
+}
+
+/**
+ * Provenance for a run that was played before any was recorded, from what can still be proved:
+ * the last commit on the main line before the run started, marked `-inferred` since the runner
+ * may have been on a branch or a dirty tree; the prompt variant its LLM drivers were configured
+ * with; and `unknown` for the CLI version and the digests, which nothing recorded.
+ */
+export async function inferProvenance(sources: {
+  repoDir: string;
+  createdAt: string;
+  config: RunConfig;
+  now?: () => Date;
+}): Promise<Provenance> {
+  const commit = await ask(
+    'git',
+    ['rev-list', '-1', `--before=${sources.createdAt}`, 'main'],
+    sources.repoDir,
+  );
+  const variants = new Set(
+    sources.config.population.flatMap((p) =>
+      p.driver.kind === 'llm' ? [p.driver.prompt_variant] : [],
+    ),
+  );
+  return {
+    source_revision: commit === null || commit.length === 0 ? 'unknown' : `${commit}-inferred`,
+    cli_version: 'unknown',
+    prompt_variant: variants.size === 1 ? ([...variants][0] as string) : 'unknown',
+    prompt_sha256: 'unknown',
+    docs_sha256: 'unknown',
+    recorded_at: (sources.now ?? (() => new Date()))().toISOString(),
+  };
+}
+
+/** What the provenance route serves for a run: the recorded fields, if any, plus the resolved model ids. */
+export type RunProvenance = Partial<Provenance> & { resolved_models?: Record<string, string[]> };
+
+export type ProvenanceOf = { experiment: string; provenance: RunProvenance };
+
+const FIELDS = [
+  'source_revision',
+  'cli_version',
+  'prompt_variant',
+  'prompt_sha256',
+  'docs_sha256',
+  'resolved_models',
+] as const;
+
+/** `m7-focal ×10, m7-focal-opus ×3`: which experiments, and how many of their runs, share a value. */
+function byExperiment(runs: readonly ProvenanceOf[]): string {
+  const counts = new Map<string, number>();
+  for (const r of runs) counts.set(r.experiment, (counts.get(r.experiment) ?? 0) + 1);
+  return [...counts].map(([e, n]) => `${e} ×${n}`).join(', ');
+}
+
+/**
+ * One line per provenance field whose value is not the same across the runs, naming each value
+ * and the runs that carry it, plus a line for any run played from a dirty source tree. Empty
+ * when every run was played by the same software, prompt, docs, and model ids. A run with no
+ * record shows as `unrecorded`, and a field that is `unrecorded` or `unknown` for every run
+ * still prints, so a table over pre-provenance runs never reads as a verified match.
+ */
+export function provenanceDifferences(runs: readonly ProvenanceOf[]): string[] {
+  const lines: string[] = [];
+  for (const field of FIELDS) {
+    const values = new Map<string, ProvenanceOf[]>();
+    for (const r of runs) {
+      const raw = r.provenance[field];
+      const value =
+        raw === undefined || (typeof raw === 'object' && Object.keys(raw).length === 0)
+          ? 'unrecorded'
+          : typeof raw === 'string'
+            ? raw
+            : Object.entries(raw)
+                .map(([k, ids]) => `${k}=${ids.join('+')}`)
+                .join(' ');
+      values.set(value, [...(values.get(value) ?? []), r]);
+    }
+    const only = values.size === 1 ? [...values.keys()][0] : undefined;
+    if (only !== undefined && only !== 'unrecorded' && only !== 'unknown') continue;
+    lines.push(
+      only !== undefined
+        ? `${field} ${only} (${byExperiment(runs)})`
+        : `${field} differs: ${[...values].map(([v, rs]) => `${v} (${byExperiment(rs)})`).join(' | ')}`,
+    );
+  }
+  const dirty = runs.filter((r) => r.provenance.source_revision?.endsWith('-dirty'));
+  if (dirty.length > 0) lines.push(`dirty source tree: ${byExperiment(dirty)}`);
+  return lines;
 }

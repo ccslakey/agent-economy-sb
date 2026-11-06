@@ -13,6 +13,8 @@ export type RunRow = {
   tokens: Record<string, string>;
   /** What played the run: source, CLI, prompt, and docs. Null until the runner records it. */
   provenance: Provenance | null;
+  /** When the run was created, ISO 8601. */
+  created_at: string;
 };
 
 /** One headless session: what was asked, what came back, and what it cost. */

@@ -34,6 +34,7 @@ describe.skipIf(url === undefined)('PostgresStore', () => {
       status: 'running',
       tokens: { c01: 't1' },
       provenance: null,
+      created_at: '2026-11-01T12:00:00.000Z',
     });
     expect(await store.getRun(runId)).toEqual({
       id: runId,
@@ -41,6 +42,7 @@ describe.skipIf(url === undefined)('PostgresStore', () => {
       status: 'running',
       tokens: { c01: 't1' },
       provenance: null,
+      created_at: '2026-11-01T12:00:00.000Z',
     });
     const provenance = {
       source_revision: 'abc123-dirty',
@@ -125,7 +127,14 @@ describe.skipIf(url === undefined)('PostgresStore', () => {
     ]);
 
     const stale = RunId.parse(`r-${randomUUID()}`);
-    await store.createRun({ id: stale, config, status: 'ended', tokens: {}, provenance: null });
+    await store.createRun({
+      id: stale,
+      config,
+      status: 'ended',
+      tokens: {},
+      provenance: null,
+      created_at: new Date().toISOString(),
+    });
     await store.rawUpdateConfig(stale, {
       ...config,
       knobs: { ...config.knobs, enforcement: 'escrow_available' },

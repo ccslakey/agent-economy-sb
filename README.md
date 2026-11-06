@@ -87,6 +87,8 @@ Open the printed URL, paste the admin token, and pick a run from the list. The v
 ```sh
 ADMIN_TOKEN=change-me node apps/runner/src/sweep.ts --api http://localhost:3000 --sweep configs/sweeps/m6-knobs.yaml --concurrency 2
 ADMIN_TOKEN=change-me node apps/runner/src/sweep.ts --api http://localhost:3000 --compare m6-knobs
+ADMIN_TOKEN=change-me node apps/runner/src/sweep.ts --api http://localhost:3000 --focal m7-focal,m7-focal-opus
+DATABASE_URL=postgres:///agent_economy node apps/runner/src/backfill-provenance.ts
 ```
 
-A sweep file names a base config, a seed list, and the variants to compare. Every variant plays every seed, a few runs at a time, and the comparison table pairs runs by seed against the first variant. Rerunning a sweep skips the runs that already ended, so an interrupted night picks up where it stopped. `--compare` prints the table for runs already played. `DATABASE_URL=... node apps/runner/src/seed-db.ts` stores a bot game to look at without spending a session.
+A sweep file names a base config, a seed list, and the variants to compare. Every variant plays every seed, a few runs at a time, and the comparison table pairs runs by seed against the first variant. Rerunning a sweep skips the runs that already ended, so an interrupted night picks up where it stopped. `--compare` prints the table for runs already played; a variant and seed played more than once counts its latest clean run only. Several experiments, comma separated, print one table across them paired by seed, and every table ends with the provenance fields that differ among its runs. `backfill-provenance.ts` gives runs from before provenance was recorded the inferred revision and `unknown` for the rest. `DATABASE_URL=... node apps/runner/src/seed-db.ts` stores a bot game to look at without spending a session.

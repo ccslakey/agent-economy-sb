@@ -348,6 +348,7 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
       status: 'running',
       tokens: Object.fromEntries(parsed.data.population.map((p) => [p.id, randomUUID()])),
       provenance: null,
+      created_at: new Date().toISOString(),
     };
     await options.store.createRun(row);
     const game = await Game.create(parsed.data, runId, gameOptions(runId));
@@ -369,6 +370,7 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
             experiment_id: r.config.experiment_id,
             seed: r.config.seed,
             status: r.status,
+            created_at: r.created_at,
             turn: games.get(r.id)?.state.turn ?? (await options.store.lastTurn(r.id)),
             phase: games.get(r.id)?.state.phase ?? null,
             knobs: r.config.knobs,
