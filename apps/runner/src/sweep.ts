@@ -74,14 +74,11 @@ async function cleanRuns(experiments: readonly string[]): Promise<CleanRun[]> {
       metrics: await admin<RunMetrics>(`/admin/runs/${r.id}/metrics`),
     })),
   );
-  const clean = withMetrics.filter(
-    (r) =>
-      r.metrics.bot_handoffs === 0 ||
-      (log(
-        `ignoring ${r.variant} seed ${r.seed} (${r.id}): ${r.metrics.bot_handoffs} bot handoffs`,
-      ),
-      false),
-  );
+  const clean = withMetrics.filter((r) => {
+    if (r.metrics.bot_handoffs === 0) return true;
+    log(`ignoring ${r.variant} seed ${r.seed} (${r.id}): ${r.metrics.bot_handoffs} bot handoffs`);
+    return false;
+  });
   const latest = new Map<string, (typeof clean)[number]>();
   for (const r of clean) {
     const key = `${r.experiment}/${r.variant}:${r.seed}`;
@@ -191,11 +188,11 @@ if (compareOnly !== undefined) {
     docsDir: path.resolve(import.meta.dirname, '../../../docs/agent'),
   });
   const done = await cleanRuns([sweep.experiment_id]);
-  const queue: SweepRun[] = expandSweep(sweep).filter(
-    (r) =>
-      !done.some((d) => d.variant === r.variant && d.seed === r.seed) ||
-      (log(`skipping ${r.config.experiment_id} seed ${r.seed}, already ended`), false),
-  );
+  const queue: SweepRun[] = expandSweep(sweep).filter((r) => {
+    const ended = done.some((d) => d.variant === r.variant && d.seed === r.seed);
+    if (ended) log(`skipping ${r.config.experiment_id} seed ${r.seed}, already ended`);
+    return !ended;
+  });
   log(`${queue.length} runs to play, ${concurrency} at a time`);
   const worker = async (): Promise<void> => {
     for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
