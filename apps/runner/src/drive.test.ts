@@ -300,6 +300,7 @@ describe('claude adapter', () => {
       prompt: 'go',
       systemPrompt: 'sys',
       model: 'sonnet',
+      harnessVersion: 1,
       effort: 'low',
       mcpConfigPath: '/tmp/m.json',
       cwd: '/tmp',

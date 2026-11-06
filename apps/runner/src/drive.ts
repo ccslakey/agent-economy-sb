@@ -43,7 +43,7 @@ export type DriveResult = {
 };
 
 type Driver =
-  | { kind: 'llm'; model: string; effort: string }
+  | { kind: 'llm'; model: string; effort: string; harnessVersion: number }
   | { kind: 'bot'; strategy: BotStrategy };
 
 /**
@@ -150,7 +150,12 @@ export async function drive(options: DriveOptions): Promise<DriveResult> {
     drivers.set(
       entry.id,
       entry.driver.kind === 'llm'
-        ? { kind: 'llm', model: entry.driver.model, effort: entry.driver.effort }
+        ? {
+            kind: 'llm',
+            model: entry.driver.model,
+            effort: entry.driver.effort,
+            harnessVersion: entry.driver.harness_version,
+          }
         : { kind: 'bot', strategy: entry.driver.strategy },
     );
   }
@@ -243,6 +248,7 @@ export async function drive(options: DriveOptions): Promise<DriveResult> {
       systemPrompt: options.systemPrompt,
       model: driver.model,
       effort: driver.effort,
+      harnessVersion: driver.harnessVersion,
       mcpConfigPath: await mcpConfigPath(company),
       cwd: options.workDir,
       ...(resume === undefined ? {} : { resume }),
@@ -310,6 +316,7 @@ export async function drive(options: DriveOptions): Promise<DriveResult> {
         systemPrompt: options.systemPrompt,
         model: driver.model,
         effort: driver.effort,
+        harnessVersion: driver.harnessVersion,
         mcpConfigPath: await mcpConfigPath(company),
         cwd: options.workDir,
         ...(sessionIds.has(company) ? { resume: sessionIds.get(company) ?? '' } : {}),
@@ -335,6 +342,7 @@ export async function drive(options: DriveOptions): Promise<DriveResult> {
         systemPrompt: options.systemPrompt,
         model: driver.model,
         effort: driver.effort,
+        harnessVersion: driver.harnessVersion,
         mcpConfigPath: await mcpConfigPath(company),
         cwd: options.workDir,
         ...(started ? { resume: sessionId } : { sessionId }),

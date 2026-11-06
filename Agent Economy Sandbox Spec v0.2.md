@@ -347,7 +347,9 @@ Agents in a round run concurrently, up to the max concurrent sessions in `limits
 
 **System prompt (neutral).** Tell the agent it runs a company, its goal is maximum net worth when the game ends, and the engine enforces only what the rules say it enforces. Tell it that other companies may be run by any model of comparable ability or by a scripted bot. Never tell it to cooperate, compete, or deceive. Prompt variants are a config field so wording effects can be tested on purpose.
 
-**Adapters.** An adapter spawns a CLI with the game MCP server and reads its JSON result. Claude Code is the first adapter. Other vendors' headless CLIs can follow for model diversity. Check each plan's terms on automated use before relying on it.
+**Adapters.** An adapter spawns a CLI with the game MCP server and reads its JSON result. Claude Code is the first adapter. A model named `ollama/<name>` is served by a local Ollama through its Anthropic-compatible endpoint, so the same CLI, prompt, and tools play it and only the base URL and model name change; the trace resolves it to the Ollama name. Other vendors' headless CLIs can follow for model diversity. Check each plan's terms on automated use before relying on it.
+
+**Harness versions.** `harness_version` in a driver names the CLI arguments that play the session. Version 1 loaded every settings source, so the operator's own plugins, skills, and global instructions sat in the system prompt, about 50k tokens of them, which a local model reads at a hundred tokens a second. Version 2 loads project settings only, about 1.5k tokens. Every run before Nov 5, 2026 is version 1; a comparison across models uses version 2 on both sides.
 
 **Scripted baseline bots** use the same API with no model: a greedy producer, an honest trader, a defector, and a random agent. They tune the economy before any LLM run and serve as reference points in every run after.
 
